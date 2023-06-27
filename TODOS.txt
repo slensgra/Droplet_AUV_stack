@@ -1,0 +1,5 @@
+
+TODAY
+-------
+2. Edit model for localization block
+4. Make a controller that controls based on the ground truth position

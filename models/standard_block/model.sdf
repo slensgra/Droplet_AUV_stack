@@ -1,0 +1,41 @@
+<?xml version='1.0'?>
+<sdf version='1.5'>
+  <model name='standard_block'>
+
+    <link name='block_body'>
+      <inertial>
+        <mass>20.0</mass>
+      </inertial>
+      <visual name='visual'>
+        <geometry>
+          <box>
+            <size>0.4 0.4 0.4</size>
+          </box>
+        </geometry>
+        <material>
+          <lighting>1</lighting>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/TurquoiseGlowOutline</name>
+          </script>
+        </material>
+        <cast_shadows>1</cast_shadows>
+        <transparency>0</transparency>
+      </visual>
+      <collision name='collision'>
+        <laser_retro>0</laser_retro>
+        <max_contacts>10</max_contacts>
+        <pose frame=''>0 0 0 0 -0 0</pose>
+        <geometry>
+          <box>
+            <size>0.4 0.4 0.4</size>
+          </box>
+        </geometry>
+      </collision>
+    </link>
+
+    <static>1</static>
+    <allow_auto_disable>1</allow_auto_disable>
+
+  </model>
+</sdf>

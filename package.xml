@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>localization_informed_planning_sim</name>
+  <version>3.1.1</version>
+  <description>Simulation test setup for localization informed plannig.</description>
+  <maintainer email="email@mail.com">dtd</maintainer>
+  <license>Apache2</license>
+  <author email="email@mail.com">dtd</author>
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>gazebo_ros</depend>
+  <export>
+    <gazebo_ros gazebo_model_path="${prefix}/models"/>
+    <gazebo_ros gazebo_media_path="${prefix}"/>
+  </export>
+</package>
