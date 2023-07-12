@@ -202,6 +202,7 @@ class PIDTracker(object):
                 self.error_integral[dimension] = hint_thrust / self.z_i
                 self.buoyancy_override_hint = None
 
+
     def clear_error_integrals(self, prev_buoyancy_input=None):
         self.last_position_update_time = None
         self.error_integral = [0.0] * len(self.error_integral)

@@ -1,0 +1,6 @@
+geometry_msgs/PoseStamped target_position
+string position_source
+---
+geometry_msgs/PoseStamped final_position
+---
+geometry_msgs/PoseStamped error

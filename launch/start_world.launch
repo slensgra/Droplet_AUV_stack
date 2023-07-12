@@ -33,4 +33,8 @@
         <arg name="yaw" value="-1.8"/>
     </include>
 
+    <node name="controller" pkg="localization_informed_planning_sim" type="global_position_controller.py" required="true" output="screen"/>
+    <node name="localization" pkg="localization_informed_planning_sim" type="breadcrumb_localization_node.py" required="true" output="screen"/>
+    <node name="assembly_manager" pkg="localization_informed_planning_sim" type="assembly_process_manager.py" required="true" output="screen"/>
+    <node name="grasp_simulator" pkg="localization_informed_planning_sim" type="grasp_drop_simulator.py" required="true" output="screen"/>
 </launch>

@@ -1,0 +1,44 @@
+{
+    "dimension_x": 20,
+    "dimension_y": 20,
+    "dimension_z": 120,
+    "cell_side_length": 0.4,
+    "structure": [
+        {
+            "x": 4,
+            "y": 4,
+            "z": 0,
+            "block_type": "normal"
+        },
+        {
+            "x": 4,
+            "y": 4,
+            "z": 1,
+            "block_type": "normal"
+        },
+        {
+            "x": 5,
+            "y": 4,
+            "z": 0,
+            "block_type": "normal"
+        },
+        {
+            "x": 5,
+            "y": 4,
+            "z": 1,
+            "block_type": "normal"
+        },
+        {
+            "x": 7,
+            "y": 7,
+            "z": 0,
+            "block_type": "localization"
+        },
+        {
+            "x": 7,
+            "y": 8,
+            "z": 0,
+            "block_type": "localization"
+        }
+    ]
+}
