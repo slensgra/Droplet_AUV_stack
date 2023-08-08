@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+import numpy as np
+
 import roslib
 roslib.load_manifest('localization_informed_planning_sim')
 
@@ -22,13 +24,14 @@ class GazeboPositionController(object):
         ground_truth_position_topic = '/rexrov/pose_gt' # ground truth pose
         breadcrumb_position_topic = 'fused_position'
         imu_topic = '/rexrov/imu'
+        self.selected_location_source = 'ground_truth'
 
         self.latest_ground_truth_position = None
         self.latest_breadcrumb_position = None
         self.latest_goal_position = None
 
         self.set_goal_position_server = rospy.Service(
-            '~set_goal_position',
+            'set_goal_position',
             localization_informed_planning_sim.srv.SetControllerTarget,
             self.set_controller_target_callback
         )
@@ -40,7 +43,6 @@ class GazeboPositionController(object):
             False
         )
 
-        self.target_position = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.latest_position = None
 
         n_thrusters = 8
@@ -57,8 +59,8 @@ class GazeboPositionController(object):
             x_d=0.0,
             y_d=0.0,
             z_d=0.0,
-            yaw_p=1.0,
-            yaw_i=0.0,
+            yaw_p=1.1,
+            yaw_i=0.0001,
             yaw_d=0.0,
             pitch_p=0.0,
             pitch_i=0.0,
@@ -118,7 +120,15 @@ class GazeboPositionController(object):
         )
 
     def set_controller_target_callback(self, request):
+        rospy.loginfo("Setting controller target using using service call in GazeboPositionController")
+        rospy.loginfo("Setting goal position to {}".format(request.target_position))
         self.latest_goal_position = request.target_position
+
+        self.controller.set_goal_position(
+            self.to_xyzrpy(self.latest_goal_position)
+        )
+
+        return True
 
     def wait_for_sensor_information(self):
         while not rospy.is_shutdown() and self.latest_ground_truth_position is None and self.latest_imu is None:
@@ -151,8 +161,8 @@ class GazeboPositionController(object):
         self.controller.set_latest_imu_reading(self.latest_imu)
 
         while not rospy.is_shutdown() and not self.error_is_in_range(self.controller.get_error()):
-            self.publish_thruster_updates()
-            self.publish_state()
+            #self.publish_thruster_updates()
+            #self.publish_state()
 
             if self.action_server.is_preempt_requested():
                 self.action_server.set_preempted()
@@ -162,7 +172,7 @@ class GazeboPositionController(object):
         self.action_server.set_succeeded()
 
     def error_is_in_range(self, error):
-        error_range = 0.15
+        error_range = 0.25
         if abs(error[0]) < error_range and abs(error[1]) < error_range and abs(error[2]) < error_range:
             return True
         
@@ -210,6 +220,10 @@ class GazeboPositionController(object):
 
         return result
 
+    def get_global_to_local_rotation(self, current_position):
+        r, p, yaw = current_position[3:]
+        return transformations.euler_matrix(0, 0, yaw, 'sxyz')[:3, :3]
+
     def publish_thruster_updates(self):
         current_position = self.get_latest_position_from_selected_source()
 
@@ -221,8 +235,6 @@ class GazeboPositionController(object):
         self.controller.set_current_position(
             current_position
         )
-
-        error = self.controller.get_error()
 
         self.controller.set_latest_imu_reading(self.latest_imu)
 
@@ -252,12 +264,8 @@ class GazeboPositionController(object):
 
         while not rospy.is_shutdown():
             if self.latest_goal_position is not None:
-                if not self.action_server.is_active():
-                    self.publish_thruster_updates()
-                    self.publish_state()
-
-            if self.action_server.is_new_goal_available():
-                self.action_server.accept_new_goal()
+                self.publish_thruster_updates()
+                self.publish_state()
 
             rospy.sleep(0.01)
 

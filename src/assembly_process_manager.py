@@ -24,96 +24,6 @@ import localization_informed_planning_sim.msg
 Block = collections.namedtuple('Block', ['id', 'position', 'index'])
 Marker = collections.namedtuple('Marker', ['id', 'position', 'index'])
 
-class MoveBehaviorClient():
-    source_ground_truth = 'ground_truth'
-    source_breadcrumb = 'breadcrumb'
-
-    def __init__(self, goal_position, position_source):
-        self.goal_position = goal_position
-        self.position_source = position_source
-
-        self.move_action_client = actionlib.SimpleActionClient(
-            'move_to_position_server',
-            localization_informed_planning_sim.msg.MoveToPositionAction,
-        )
-
-        self.is_started = False
-
-    def cancel(self):
-        self.move_action_client.cancel_goal()
-
-    @property
-    def is_completed(self):
-        state = self.move_action_client.get_state()
-        return state == actionlib.GoalStatus.SUCCEEDED
-
-    def start(self):
-        self.is_started = True
-        print("Waiting for server...")
-        self.move_action_client.wait_for_server()
-        print("Found server!")
-
-        rospy.loginfo("Sending goal position, {}".format(self.goal_position))
-        self.move_action_client.send_goal(
-            localization_informed_planning_sim.msg.MoveToPositionGoal(
-                target_position=self.goal_position,
-                position_source=self.position_source
-            )
-        )
-
-
-class GraspBehaviorClient():
-    def __init__(self, ideal_grasp_position, on_success, on_fail):
-        self.grasp_action_client = actionlib.SimpleActionClient(
-            'attempt_grasp_server',
-            localization_informed_planning_sim.msg.AttemptGraspAction
-        )
-        self.ideal_grasp_position = ideal_grasp_position
-        self.on_success = on_success
-        self.on_fail = on_fail
-        self.is_started = False
-        self.terminated = False
-
-    def start(self):
-        self.is_started=True
-        self.grasp_action_client.wait_for_server()
-
-        self.grasp_action_client.send_goal(
-            localization_informed_planning_sim.msg.AttemptGraspGoal(
-                x=self.ideal_grasp_position[0],
-                y=self.ideal_grasp_position[1],
-                z=self.ideal_grasp_position[2],
-            )
-        )
-
-    @property
-    def is_completed(self):
-        state = self.grasp_action_client.get_state()
-
-        if state == actionlib.GoalStatus.SUCCEEDED:
-            if not self.terminated:
-                self.terminated = True
-                self.on_success()
-            return True
-
-        if state == actionlib.GoalStatus.ABORTED:
-            if not self.terminated:
-                self.terminated = True
-                self.on_fail()
-            return False
-
-        return False
-
-
-class InfiniteLoopBehavior():
-    def __init__(self):
-        self.is_started = False
-        self.is_completed = False
-
-    def start(self):
-        self.is_started = True
-
-
 class DespawnBlockState(smach.State):
     def __init__(self, target_block_id, assembly_manager, outcomes=['succeeded', 'aborted']):
         smach.State.__init__(self, outcomes=outcomes)
@@ -125,12 +35,31 @@ class DespawnBlockState(smach.State):
         return 'succeeded'
 
 
+class SpawnMarkerState(smach.State):
+    def __init__(self, marker_id, assembly_manager, position, slot_index, outcomes=['succeeded', 'aborted']):
+        smach.State.__init__(self, outcomes=outcomes)
+        self.assembly_manager = assembly_manager
+        self.position = position
+        self.marker_id = marker_id
+        self.slot_index = slot_index
+
+    def execute(self, userdata):
+        self.assembly_manager.spawn_markers(
+            marker_positions=[self.position],
+            marker_ids=[self.marker_id],
+            marker_indices=[self.slot_index]
+        )
+        return 'succeeded'
+
+
 class AssemblyProcessManager():
     ocean_depth_meters = 100.0 # lowest block at -99.6
-    block_height_meters = 0.4
-    lowest_block_height = -99.8
     vehicle_height = 1.0
-    selected_pallet_to_unload = './pallets/pallet_0.json'
+    block_scaling_factor = 3.0
+    block_height_meters = 0.4 * block_scaling_factor
+    manipulator_height = 0.2 * block_scaling_factor
+
+    lowest_block_height = -ocean_depth_meters + block_height_meters / 2.0
 
     def __init__(self):
         rospy.init_node('assembly_process_manager')
@@ -157,57 +86,13 @@ class AssemblyProcessManager():
         )
 
         self.set_controller_target_client = rospy.ServiceProxy(
-            'set_goal_position',
+            '/set_goal_position',
             localization_informed_planning_sim.srv.SetControllerTarget
         )
 
         self.actions = []
 
-    def get_simple_plan(self):
-        frame_id = 'world'
-        seq = 0
-        stamp = rospy.Time.now()
-
-        largest_block_name = max((k for k in self.block_position_by_id.keys()), key=lambda x: self.block_position_by_id[x][2])
-        target_pos = self.get_grasp_position_for_block_name(largest_block_name)
-
-        rospy.loginfo("~~~~~~~~~~~~~~~~~~~~~~~~")
-        rospy.loginfo("Grasp position for block, {}: {}".format(largest_block_name, target_pos))
-        rospy.loginfo("~~~~~~~~~~~~~~~~~~~~~~~~")
-
-        target_pos_xyzrpy =  [target_pos[0], target_pos[1], target_pos[2], 0.0, 0.0, 0.0]
-
-        on_suc = lambda: self.on_grasp_success(target_pos_xyzrpy, largest_block_name)
-        on_f   = lambda: self.on_grasp_fail(target_pos_xyzrpy, largest_block_name)
-
-        actions = [
-            MoveBehaviorClient(
-                droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
-                    target_pos_xyzrpy,
-                    frame_id=frame_id,
-                    seq=seq,
-                    stamp=stamp
-                ), 
-                MoveBehaviorClient.source_ground_truth
-            ),
-            GraspBehaviorClient(
-                ideal_grasp_position=target_pos_xyzrpy,
-                on_success=on_suc,
-                on_fail=on_f
-            ),
-            MoveBehaviorClient(
-                droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
-                    target_pos_xyzrpy,
-                    frame_id=frame_id,
-                    seq=seq,
-                    stamp=stamp
-                ), 
-                MoveBehaviorClient.source_ground_truth
-            ),
-            InfiniteLoopBehavior(),
-        ]
-
-        return actions
+        self.marker_reading_history = []
 
     def on_grasp_success(self, target_pose, block_name):
         rospy.loginfo("Successfully grasped block {} at position {}".format(block_name, target_pose))
@@ -224,7 +109,7 @@ class AssemblyProcessManager():
         return [
             position[0],
             position[1],
-            position[2] + AssemblyProcessManager.block_height_meters + AssemblyProcessManager.vehicle_height / 2.0 + 0.1
+            position[2] + AssemblyProcessManager.block_height_meters + (AssemblyProcessManager.vehicle_height / 2.0) + AssemblyProcessManager.manipulator_height
         ]
 
     def send_marker_position_to_breadcrumb(self, marker_id, position):
@@ -263,7 +148,7 @@ class AssemblyProcessManager():
     def spawn_markers(self, marker_positions, marker_ids, marker_indices):
         self.marker_state = {}
         for i, marker_position in enumerate(marker_positions):
-            marker_name = 'marker_{}'.format(i)
+            marker_name = 'marker_{}'.format(marker_ids[i])
             self.spawn_model_client(
                     model_name=marker_name,
                     model_xml=open(self.get_model_path_for_marker_id(marker_ids[i]), 'r').read(),
@@ -300,10 +185,10 @@ class AssemblyProcessManager():
             rospy.sleep(0.1)
 
     def move_to_idle_position(self):
-        rospy.wait_for_service('/controller/set_goal_position')
+        rospy.wait_for_service('/set_goal_position')
         self.set_controller_target_client(
             target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
-                [0.0, 0.0, -98.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, -97.0, 0.0, 0.0, 0.0],
                 frame_id='world',
                 seq=0,
                 stamp=rospy.Time.now()
@@ -325,12 +210,7 @@ class AssemblyProcessManager():
         return index_to_name_map
 
     def parse_build_plan(self, build_plan_json_path):
-        # this is a set of pairs of indices. Move between the indices
-        # and grasp. Disregard the placement if the grabbed block is a normal one.
-
-        # maybe for now just normal grabs even.
-
-        result_actions = []
+        state_machine = smach.StateMachine(['succeeded', 'aborted', 'preempted'])
 
         with open(build_plan_json_path) as f:
             build_plan = json.load(f)
@@ -338,128 +218,176 @@ class AssemblyProcessManager():
             block_index_to_name_map = self.get_index_to_name_map(self.structure_state)
             marker_index_to_name_map = self.get_index_to_name_map(self.marker_state)
 
-            for action in build_plan["unload_plan"]:
-                print("Action is", action)
-                from_index = [
-                    action["from"]["x"],
-                    action["from"]["y"],
-                    action["from"]["z"]
-                ]
+            with state_machine:
+                for action_number, action in enumerate(build_plan["unload_plan"]):
+                    next_move = 'MOVE_{}'.format(str(action_number + 1))
+                    if action_number == len(build_plan["unload_plan"]) - 1:
+                        next_move = None
+                    
+                    print("Action is", action)
+                    from_index = [
+                        action["from"]["x"],
+                        action["from"]["y"],
+                        action["from"]["z"]
+                    ]
 
-                grasp_position = self.offset_position_for_grasp(
-                    self.get_position_from_slot_index(from_index)
-                )
+                    from_angle = 0.0
+                    if "from_angle" in action:
+                        from_angle = action["from_angle"]
 
-                target_block_name = block_index_to_name_map[from_index[0]][from_index[1]][from_index[2]]
-                target_marker_name = marker_index_to_name_map[from_index[0]][from_index[1]][from_index[2]]
+                    to_angle = 0.0
+                    if "to_angle" in action:
+                        to_angle = action["to_angle"] 
 
-                target_name = target_block_name
-                if target_name is None:
-                    target_name = target_marker_name
+                    grasp_position = self.offset_position_for_grasp(
+                        self.get_position_from_slot_index(from_index)
+                    )
 
-                if target_name is None:
-                    print("Name maps:")
-                    print("Block names:")
-                    pprint.pprint(block_index_to_name_map)
+                    target_block_name = block_index_to_name_map[from_index[0]][from_index[1]][from_index[2]]
+                    target_marker_name = marker_index_to_name_map[from_index[0]][from_index[1]][from_index[2]]
 
-                    print("Marker names:")
-                    pprint.pprint(marker_index_to_name_map)
-                    rospy.logwarn("Could not find a name for index {}".format(from_index))
-                    continue
-                    #raise Exception("Could not find a name for the index {}".format(from_index))
+                    target_name = target_block_name
+                    animate_placement = False
 
-                goal_pose = [
-                    grasp_position[0],
-                    grasp_position[1],
-                    grasp_position[2],
-                    0.0,
-                    0.0,
-                    0.0
-                ]
+                    if target_name is None:
+                        animate_placement = True
+                        target_name = target_marker_name
 
-                result_actions.append(
-                    MoveBehaviorClient(
-                        droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
+                    goal_pose = [
+                        grasp_position[0],
+                        grasp_position[1],
+                        grasp_position[2],
+                        0.0,
+                        0.0,
+                        from_angle
+                    ]
+
+                    move_goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
+                        target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
                             goal_pose,
                             frame_id='world',
                             seq=0,
                             stamp=rospy.Time.now()
                         ),
-                        MoveBehaviorClient.source_ground_truth
+                        position_source='ground_truth'
                     )
-                )
 
-                result_actions.append(
-                    GraspBehaviorClient(
-                        ideal_grasp_position=goal_pose,
-                        on_success=lambda: self.on_grasp_success(goal_pose, copy.deepcopy(target_block_name)),
-                        on_fail=lambda: self.on_grasp_fail(goal_pose, copy.deepcopy(target_block_name)),
+                    smach.StateMachine.add(
+                        'MOVE_{}'.format(str(action_number)),
+                        smach_ros.SimpleActionState(
+                            'move_to_position_server',
+                            localization_informed_planning_sim.msg.MoveToPositionAction, 
+                            goal=move_goal
+                        ),
+                        transitions={'succeeded': 'GRASP_{}'.format(str(action_number))},
                     )
-                )
 
-        return result_actions
-    
-    def test_state_machine_build_plan(self):
-        state_machine = smach.StateMachine(['succeeded', 'aborted', 'preempted'])
+                    grasp_goal = localization_informed_planning_sim.msg.AttemptGraspGoal(
+                        x=goal_pose[0],
+                        y=goal_pose[1],
+                        z=goal_pose[2],
+                    )
 
-        with state_machine:
-            for i in range(3):
-                goal_pose = [0.0, 0.0, -96.0 + float(i), 0.0, 0.0, 0.0]
-                goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
-                    target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
-                        goal_pose,
-                        frame_id='world',
-                        seq=0,
-                        stamp=rospy.Time.now()
-                    ),
-                    position_source='ground_truth'
-                )
+                    smach.StateMachine.add(
+                        'GRASP_{}'.format(str(action_number)),
+                        smach_ros.SimpleActionState(
+                            'attempt_grasp_server',
+                            localization_informed_planning_sim.msg.AttemptGraspAction,
+                            goal=grasp_goal
+                        ),
+                        transitions={'succeeded': 'DESPAWN_{}'.format(str(action_number))},
+                    )
 
-                next_move = 'MOVE_{}'.format(str(i+1))
-                if i == 2:
-                    next_move = None
+                    next_action = next_move
+                    if animate_placement:
+                        next_action = 'MOVE_{}.0'.format(str(action_number))
 
-                smach.StateMachine.add(
-                    'MOVE_{}'.format(str(i)),
-                    smach_ros.SimpleActionState(
-                        'move_to_position_server',
-                        localization_informed_planning_sim.msg.MoveToPositionAction, 
-                        goal=goal
-                    ),
-                    transitions={'succeeded': 'GRASP_{}'.format(str(i))},
-                )
+                    smach.StateMachine.add(
+                        'DESPAWN_{}'.format(str(action_number)),
+                        DespawnBlockState(
+                            target_block_id=target_name,
+                            assembly_manager=self
+                        ),
+                        transitions={'succeeded': next_action},
+                    )
 
-                grasp_goal = localization_informed_planning_sim.msg.AttemptGraspGoal(
-                    x=goal_pose[0],
-                    y=goal_pose[1],
-                    z=goal_pose[2],
-                )
+                    if animate_placement:
+                        to_index = [
+                            action["to"]["x"],
+                            action["to"]["y"],
+                            action["to"]["z"],
+                        ]
+                        marker_index_to_name_map[from_index[0]][from_index[1]][from_index[2]] = None
+                        marker_index_to_name_map[to_index[0]][to_index[1]][to_index[2]] = target_name
 
-                smach.StateMachine.add(
-                    'GRASP_{}'.format(str(i)),
-                    smach_ros.SimpleActionState(
-                        'attempt_grasp_server',
-                        localization_informed_planning_sim.msg.AttemptGraspAction,
-                        goal=grasp_goal
-                    ),
-                    transitions={'succeeded': 'DESPAWN_{}'.format(str(i))},
-                )
+                        place_position = self.offset_position_for_grasp(
+                            self.get_position_from_slot_index(to_index)
+                        )
 
-                smach.StateMachine.add(
-                    'DESPAWN_{}'.format(str(i)),
-                    DespawnBlockState(
-                        target_block_id='block_{}'.format(str(i)),
-                        assembly_manager=self
-                    ),
-                    transitions={'succeeded': next_move},
-                )
+                        place_position_xyzrpy = [place_position[0], place_position[1], place_position[2], 0.0, 0.0, to_angle]
 
-        return state_machine
-        
+                        place_goal = localization_informed_planning_sim.msg.AttemptGraspGoal(
+                            x=place_position[0],
+                            y=place_position[1],
+                            z=place_position[2],
+                        )
+
+                        move_to_place_goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
+                            target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
+                                place_position_xyzrpy,
+                                frame_id='world',
+                                seq=0,
+                                stamp=rospy.Time.now()
+                            ),
+                            position_source='ground_truth'
+                        )
+
+                        smach.StateMachine.add(
+                            'MOVE_{}.0'.format(str(action_number)),
+                            smach_ros.SimpleActionState(
+                                'move_to_position_server',
+                                localization_informed_planning_sim.msg.MoveToPositionAction, 
+                                goal=move_to_place_goal
+                            ),
+                            transitions={'succeeded': 'GRASP_{}.0'.format(str(action_number))},
+                        )
+
+                        smach.StateMachine.add(
+                            'GRASP_{}.0'.format(str(action_number)),
+                            smach_ros.SimpleActionState(
+                                'attempt_grasp_server',
+                                localization_informed_planning_sim.msg.AttemptGraspAction,
+                                goal=place_goal
+                            ),
+                            transitions={'succeeded': 'SPAWN_{}'.format(str(action_number))},
+                        )
+
+                        smach.StateMachine.add(
+                            'SPAWN_{}'.format(action_number),
+                            SpawnMarkerState(
+                                self.marker_state[target_name].id, 
+                                self, 
+                                self.get_position_from_slot_index(to_index),
+                                to_index
+                            ),
+                            transitions={'succeeded': next_move}
+                        )
+
+        return state_machine 
 
     def get_position_from_slot_index(self, index):
-        cell_scaling = self.cell_side_length * np.array([1.0, 1.0, 1.0])
-        cell_offset = np.array([self.cell_side_length / 2.0, self.cell_side_length / 2.0, self.cell_side_length / 2.0])
+        sf = AssemblyProcessManager.block_scaling_factor
+        cell_scaling = self.cell_side_length * np.array([
+            sf, 
+            sf,
+            sf 
+        ])
+
+        cell_offset = np.array([
+            (self.cell_side_length * sf) / 2.0,
+            (self.cell_side_length * sf) / 2.0, 
+            (self.cell_side_length * sf) / 2.0
+        ])
         cell_offset = cell_offset - np.array([0.0, 0.0, AssemblyProcessManager.ocean_depth_meters])
 
         return (cell_scaling * index) + cell_offset
@@ -482,9 +410,9 @@ class AssemblyProcessManager():
                 "block_{i}".format(i=i): self.get_position_from_slot_index(b) for i, b in enumerate(normal_block_indices)
             }
 
-            if len(marker_indices) > 2:
-                rospy.logerror("More than 2 markers are not supported!")
-                raise Exception("More than 2 markers are not supported!")
+            if len(marker_indices) > 4:
+                rospy.logerror("More than 4 markers are not supported!")
+                raise Exception("More than 4 markers are not supported!")
 
             self.marker_position_by_id = {
                 i: self.get_position_from_slot_index(b) for i, b in enumerate(marker_indices) 
@@ -509,7 +437,7 @@ if __name__ == '__main__':
     manager = AssemblyProcessManager()
     manager.move_to_idle_position()
     manager.spawn_structure(
-        "/home/sam/uuv_ws/src/localization_informed_planning_sim/param/pallet90.json"
+        "/home/sam/uuv_ws/src/localization_informed_planning_sim/param/pallet4.json"
     )
 
     rospy.sleep(4.0)
@@ -520,6 +448,12 @@ if __name__ == '__main__':
 
     #rospy.loginfo("Starting build plan execution.")
     #manager.run_build_plan(actions)
+    state_machine = manager.parse_build_plan(
+        "/home/sam/uuv_ws/src/localization_informed_planning_sim/param/plan_hopping_four.json",
+        #"/home/sam/uuv_ws/src/localization_informed_planning_sim/param/plan_hopping.json"
+    )
 
-    state_machine = manager.test_state_machine_build_plan()
+    introspection_server = smach_ros.IntrospectionServer('assembly_state_machine', state_machine, '/SM_ROOT')
+    introspection_server.start()
+
     state_machine.execute()

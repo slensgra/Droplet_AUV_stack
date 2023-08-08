@@ -1,3 +1,4 @@
+import numpy as np
 import collections
 import rospy
 import tf
@@ -232,9 +233,13 @@ class PIDTracker(object):
     def get_xyyaw_thrust_vector(self):
         error = self.get_error()
 
+        error_rotation_mat = tf.transformations.euler_matrix(0, 0, -self.current_position[5])[:3, :3]
+        error_translation = np.array(error[:3])
+        rotated_error = np.matmul(error_rotation_mat, error_translation)
+
         return [
-            error[0] * self.x_p + self.current_velocity[0] * self.x_d + self.error_integral[0] * self.x_i,
-            error[1] * self.y_p + self.current_velocity[1] * self.y_d + self.error_integral[1] * self.y_i,
+            rotated_error[0] * self.x_p + self.current_velocity[0] * self.x_d + self.error_integral[0] * self.x_i,
+            rotated_error[1] * self.y_p + self.current_velocity[1] * self.y_d + self.error_integral[1] * self.y_i,
             error[5] * self.yaw_p + self.current_velocity[5] * self.yaw_d + self.error_integral[5] * self.yaw_i
         ]
 

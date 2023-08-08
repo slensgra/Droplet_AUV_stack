@@ -20,6 +20,7 @@ add_service_files(
 add_message_files(
   FILES
   GlobalPositionControllerState.msg
+  BreadcrumbLocalizationResult.msg
 )
 
 generate_messages(DEPENDENCIES std_msgs sensor_msgs actionlib_msgs geometry_msgs)

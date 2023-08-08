@@ -10,7 +10,7 @@ import nav_msgs.msg
 import localization_informed_planning_sim.msg
 
 class GraspSimulatorNode():
-    grasp_duration_seconds = 5.0
+    grasp_duration_seconds = 2.0
 
     def __init__(self, acceptance_area_radius):
         self.acceptance_area_radius = acceptance_area_radius
@@ -19,6 +19,11 @@ class GraspSimulatorNode():
                 nav_msgs.msg.Odometry,
                 self.ground_truth_position_callback
         )
+        self.fused_position_subscriber = rospy.Subscriber(
+            '/fused_position',
+            localization_informed_planning_sim.msg.BreadcrumbLocalizationResult,
+            self.breadcrumb_callback
+        )
 
         self.action_server = actionlib.SimpleActionServer(
             'attempt_grasp_server',
@@ -26,6 +31,9 @@ class GraspSimulatorNode():
             self.attempt_grasp,
             False
         )
+
+    def breadcrumb_callback(self, message):
+        self.latest_num_markers = message.num_visible_markers
 
     def ground_truth_position_callback(self, message):
         self.latest_ground_truth_reading = message
@@ -50,6 +58,9 @@ class GraspSimulatorNode():
         grasp_start = rospy.Time.now()
 
         while (rospy.Time.now() - grasp_start).to_sec() < GraspSimulatorNode.grasp_duration_seconds:
+            if self.latest_num_markers < 2:
+                rospy.logerr("NOT ENOUGH MARKERS DURING GRASP!!!!!!!!!!!!")
+
             if self.get_grasp_error(goal) > self.acceptance_area_radius:
 
                 if self.action_server.is_active():

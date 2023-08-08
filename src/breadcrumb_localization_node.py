@@ -11,6 +11,7 @@ import cv2
 from cv2 import aruco
 
 import localization_informed_planning_sim.srv
+import localization_informed_planning_sim.msg
 
 class BreadcrumbLocalizer():
     def __init__(self):
@@ -52,7 +53,7 @@ class BreadcrumbLocalizer():
 
         self.fused_position_publisher = rospy.Publisher(
             'fused_position',
-            geometry_msgs.msg.Point
+            localization_informed_planning_sim.msg.BreadcrumbLocalizationResult
         )
 
         self.set_marker_position_service = rospy.Service(
@@ -133,7 +134,10 @@ class BreadcrumbLocalizer():
 
         fused_position = self.get_fused_position(relative_position_by_id)
 
-        fused_position_msg = geometry_msgs.msg.Point(
+        fused_position_msg = localization_informed_planning_sim.msg.BreadcrumbLocalizationResult()
+        fused_position_msg.num_visible_markers = len(relative_position_by_id.keys())
+
+        fused_position_msg.position = geometry_msgs.msg.Point(
             x=fused_position[0],
             y=fused_position[1],
             z=fused_position[2]
@@ -195,7 +199,7 @@ class BreadcrumbLocalizer():
         #if len(covariances) != 2:
         #    raise Exception("Can only fuse two covariances")
         
-        elif len(measured_positions) == 2:
+        elif len(measured_positions) <= 4:
             K = np.matmul(covariances[0], np.linalg.inv(covariances[0] + covariances[1]))
             fused_covariance = covariances[1] - np.matmul(K, covariances[1])
             fused_position = measured_positions[0] + np.matmul(K, measured_positions[1] - measured_positions[0])
