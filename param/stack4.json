@@ -1,0 +1,32 @@
+{
+    "dimension_x": 20,
+    "dimension_y": 20,
+    "dimension_z": 120,
+    "cell_side_length": 0.4,
+    "structure": [
+        {
+            "x": 19,
+            "y": 19,
+            "z": 0,
+            "block_type": "normal"
+        },
+        {
+            "x": 19,
+            "y": 19,
+            "z": 1,
+            "block_type": "normal"
+        },
+        {
+            "x": 19,
+            "y": 19,
+            "z": 2,
+            "block_type": "normal"
+        },
+        {
+            "x": 19,
+            "y": 19,
+            "z": 3,
+            "block_type": "normal"
+        }
+    ]
+}
