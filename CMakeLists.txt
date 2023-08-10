@@ -37,3 +37,10 @@ include_directories(
 install(DIRECTORY launch robots msg
         DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
         PATTERN "*~" EXCLUDE)
+
+install(PROGRAMS
+    src/breadcrumb_localization_node.py
+    src/assembly_process_manager.py
+    src/global_position_controller.py
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)

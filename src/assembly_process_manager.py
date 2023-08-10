@@ -1,9 +1,11 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 import collections
 import numpy as np
 import json
 import copy
 import pprint
+import time
+import math
 
 import roslib
 roslib.load_manifest('localization_informed_planning_sim')
@@ -52,6 +54,16 @@ class SpawnMarkerState(smach.State):
         return 'succeeded'
 
 
+class PauseState(smach.State):
+    def __init__(self, pause_seconds, outcomes=['succeeded', 'aborted']):
+        smach.State.__init__(self, outcomes=outcomes)
+        self.pause_seconds = pause_seconds
+
+    def execute(self, userdata):
+        rospy.sleep(self.pause_seconds)
+        return 'succeeded'
+
+
 class AssemblyProcessManager():
     ocean_depth_meters = 100.0 # lowest block at -99.6
     vehicle_height = 1.0
@@ -73,13 +85,12 @@ class AssemblyProcessManager():
             localization_informed_planning_sim.msg.MoveToPositionAction
         )
 
-        rospy.wait_for_service(self.spawn_model_service_name)
-
         self.spawn_model_client = rospy.ServiceProxy(self.spawn_model_service_name, gazebo_msgs.srv.SpawnModel)
         self.delete_model_client = rospy.ServiceProxy(self.delete_model_service_name, gazebo_msgs.srv.DeleteModel)
 
-        self.marker_model_path_format = rospkg.RosPack().get_path('localization_informed_planning_sim') + '/models/aruco_{marker_id}/model.sdf'
-        self.block_model_path = rospkg.RosPack().get_path('localization_informed_planning_sim') + '/models/standard_block/model.sdf'
+        #self.marker_model_path_format = rospkg.RosPack().get_path('localization_informed_planning_sim') + '/models/aruco_{marker_id}/model.sdf'
+        #self.block_model_path = rospkg.RosPack().get_path('localization_informed_planning_sim') + '/models/standard_block/model.sdf'
+
         self.set_marker_position_client = rospy.ServiceProxy(
             'set_marker_position',
             localization_informed_planning_sim.srv.SetGlobalPosition
@@ -127,6 +138,7 @@ class AssemblyProcessManager():
         self.delete_model_client(model_name=model_name)
 
     def spawn_blocks(self, block_positions, block_names, block_indices):
+        rospy.wait_for_service(self.spawn_model_service_name)
         for i, block_position in enumerate(block_positions):
             self.spawn_model_client(
                     model_name=block_names[i],
@@ -393,6 +405,55 @@ class AssemblyProcessManager():
         return (cell_scaling * index) + cell_offset
 
 
+    def get_controller_test_state_machine(self):
+        state_machine = smach.StateMachine(['succeeded', 'aborted', 'preempted'])
+
+        action_number = 0
+        pause_time = 5.0
+        goal_positions = [
+            [0.0, 0.0, 0.8, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.8, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.8, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.8, 0.0, 0.0, math.pi/3.0],
+            [0.5, 0.0, 0.8, 0.0, 0.0, math.pi/3.0],
+            [-0.5, 0.0, 0.75, 0.0, 0.0, math.pi/3.0],
+            [0.0, 0.0, 0.80, 0.0, 0.0, math.pi/2.0],
+        ]
+        with state_machine:
+            for i, goal_pose in enumerate(goal_positions):
+                move_goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
+                    target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
+                        goal_pose,
+                        frame_id='world',
+                        seq=0,
+                        stamp=rospy.Time.now()
+                    ),
+                    position_source='breadcrumb'
+                )
+
+                smach.StateMachine.add(
+                    'MOVE_{}'.format(str(action_number)),
+                    smach_ros.SimpleActionState(
+                        'move_to_position_server',
+                        localization_informed_planning_sim.msg.MoveToPositionAction, 
+                        goal=move_goal
+                    ),
+                    transitions={'succeeded': 'PAUSE_{}'.format(str(action_number))},
+                )
+
+                next_state = 'MOVE_{}'.format(str(action_number+1))
+                if i == len(goal_positions)-1:
+                    next_state = ''
+
+                smach.StateMachine.add(
+                    'PAUSE_{}'.format(str(action_number)),
+                    PauseState(pause_time),
+                    transitions={'succeeded': next_state}
+                )
+                action_number = action_number + 1
+
+        return state_machine
+
     def spawn_structure(self, structure_spec_json_path):
         with open(structure_spec_json_path, 'r') as f:
             structure_spec = json.load(f)
@@ -435,12 +496,12 @@ class AssemblyProcessManager():
 
 if __name__ == '__main__':
     manager = AssemblyProcessManager()
-    manager.move_to_idle_position()
-    manager.spawn_structure(
-        "/home/sam/uuv_ws/src/localization_informed_planning_sim/param/pallet4.json"
-    )
+    #manager.move_to_idle_position()
+    #manager.spawn_structure(
+    #    "/home/sam/uuv_ws/src/localization_informed_planning_sim/param/pallet4.json"
+    #)
 
-    rospy.sleep(4.0)
+    #rospy.sleep(4.0)
     #actions = manager.parse_build_plan(
     #    "/home/sam/uuv_ws/src/localization_informed_planning_sim/param/plan_pallet4.json"
     #)
@@ -448,10 +509,11 @@ if __name__ == '__main__':
 
     #rospy.loginfo("Starting build plan execution.")
     #manager.run_build_plan(actions)
-    state_machine = manager.parse_build_plan(
-        "/home/sam/uuv_ws/src/localization_informed_planning_sim/param/plan_hopping_four.json",
-        #"/home/sam/uuv_ws/src/localization_informed_planning_sim/param/plan_hopping.json"
-    )
+    #state_machine = manager.parse_build_plan(
+    #    "/home/sam/uuv_ws/src/localization_informed_planning_sim/param/plan_hopping_four.json",
+    #    #"/home/sam/uuv_ws/src/localization_informed_planning_sim/param/plan_hopping.json"
+    #)
+    state_machine = manager.get_controller_test_state_machine()
 
     introspection_server = smach_ros.IntrospectionServer('assembly_state_machine', state_machine, '/SM_ROOT')
     introspection_server.start()

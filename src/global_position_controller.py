@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 import numpy as np
 
 import roslib
@@ -7,35 +7,44 @@ roslib.load_manifest('localization_informed_planning_sim')
 import rospy
 import actionlib
 import sensor_msgs.msg
-import geometry_msgs.msg
+import mavros_msgs.msg
 import nav_msgs.msg
 from tf import transformations
 
-import uuv_gazebo_ros_plugins_msgs.msg
 
-from droplet_underwater_assembly_libs import trajectory_tracker
+from droplet_underwater_assembly_libs import trajectory_tracker, config, utils
 import localization_informed_planning_sim.msg
 import localization_informed_planning_sim.srv
 
 # this class is also an actionlib server
-class GazeboPositionController(object):
+class GlobalPositionController(object):
     def __init__(self):
-        thruster_topic_name_format = '/rexrov/thrusters/{thruster_id}/input'
-        ground_truth_position_topic = '/rexrov/pose_gt' # ground truth pose
-        breadcrumb_position_topic = 'fused_position'
-        imu_topic = '/rexrov/imu'
-        self.selected_location_source = 'ground_truth'
+        self.simulation_mode = rospy.get_param('~simulation_mode', False)
+        self.dry_run_mode = rospy.get_param('~dry_run_mode', True)
 
         self.latest_ground_truth_position = None
         self.latest_breadcrumb_position = None
         self.latest_goal_position = None
+        self.latest_position = None
+        self.latest_imu = None
+        self.n_thrusters = 8
+        self.breadcrumb_position_topic = 'fused_position'
+        self.imu_topic = config.IMU_TOPIC
+        self.selected_location_source = 'breadcrumb'
+        self.initial_goal_position = rospy.get_param('~initial_goal_position', None)
+        rospy.loginfo("Moving to initial goal position {}".format(self.initial_goal_position))
+        self.initial_goal_position = [0.0, 0.0, 0.8, 0.0, 0.0, 0.0]
+
+        if self.simulation_mode:
+            self.imu_topic = '/rexrov/imu'
+            self.selected_location_source = 'ground_truth'
 
         self.set_goal_position_server = rospy.Service(
             'set_goal_position',
             localization_informed_planning_sim.srv.SetControllerTarget,
             self.set_controller_target_callback
         )
-        
+
         self.action_server = actionlib.SimpleActionServer(
             'move_to_position_server',
             localization_informed_planning_sim.msg.MoveToPositionAction,
@@ -43,13 +52,83 @@ class GazeboPositionController(object):
             False
         )
 
-        self.latest_position = None
+        self.imu_subscriber = rospy.Subscriber(
+            self.imu_topic,
+            sensor_msgs.msg.Imu,
+            self.imu_callback,
+            queue_size=1
+        )
 
-        n_thrusters = 8
+        self.state_publisher = rospy.Publisher(
+            '~state',
+            localization_informed_planning_sim.msg.GlobalPositionControllerState,
+            queue_size=1
+        )
 
-        self.latest_imu = None
+        self.breadcrumb_subscriber = rospy.Subscriber(
+            self.breadcrumb_position_topic,
+            localization_informed_planning_sim.msg.BreadcrumbLocalizationResult,
+            self.breadcrumb_callback,
+        )
 
-        pid_gains = dict(
+        if self.simulation_mode:
+            self.initialize_simulation_mode()
+        else:
+            self.initialize_live_robot_mode()
+
+        if self.initial_goal_position is not None:
+            self.controller.set_goal_position(self.initial_goal_position)
+            self.latest_goal_position = self.initial_goal_position
+
+    def arm_if_necessary(self):
+        if not self.simulation_mode and not self.dry_run_mode:
+            rospy.logwarn("Warning! Arming motors...")
+            utils.set_motor_arming(True)
+            rospy.loginfo("Motors armed.")
+
+    def initialize_live_robot_mode(self):
+        self.rc_override_topic = '/mavros/rc/override'
+        self.rc_override_publisher = rospy.Publisher(
+            self.rc_override_topic,
+            mavros_msgs.msg.OverrideRCIn,
+            queue_size=1
+        )
+
+        self.pid_gains = dict(
+            x_p=-2.00,
+            y_p=2.0,
+            yaw_p=2.0, 
+            x_d=-0.0, 
+            y_d=-0.00,
+            yaw_d=1.0,
+            x_i=0.0,
+            y_i=0.0,
+            yaw_i=0.10,
+            roll_p=1.0,
+            roll_i=0.00,
+            roll_d=-0.50,
+            z_p=0.00,
+            z_i=0.00,#config.DEFAULT_Z_I_GAIN,
+            z_d=0.00,
+            pitch_p=-1.0,
+            pitch_i=-0.0,
+            pitch_d=0.50,
+        )
+
+        self.controller = trajectory_tracker.PIDTracker(
+            **self.pid_gains
+        )
+        temporary = list([-1.0 * i for i in self.controller.y_factor])
+        self.controller.y_factor = self.controller.x_factor
+        self.controller.x_factor = temporary
+
+
+    def initialize_simulation_mode(self):
+        import uuv_gazebo_ros_plugins_msgs.msg # import here because robot doesn't have this installed
+        self.thruster_topic_name_format = '/rexrov/thrusters/{thruster_id}/input'
+        self.ground_truth_position_topic = '/rexrov/pose_gt' # ground truth pose
+
+        self.pid_gains = dict(
             x_p=1.0,
             y_p=1.0,
             z_p=1.0,
@@ -71,8 +150,23 @@ class GazeboPositionController(object):
         )
 
         self.controller = trajectory_tracker.PIDTracker(
-            **pid_gains
+            **self.pid_gains
         )
+
+        self.ground_truth_position_subscriber = rospy.Subscriber(
+            ground_truth_position_topic,
+            nav_msgs.msg.Odometry,
+            self.global_position_callback,
+            queue_size=1
+        )
+
+        self.thruster_publishers = [
+            rospy.Publisher(
+                thruster_topic_name_format.format(thruster_id=i),
+                uuv_gazebo_ros_plugins_msgs.msg.FloatStamped,
+                queue_size=1
+            ) for i in range(n_thrusters)
+        ]
 
         self.controller.x_factor = [
             0.0, 0.0, 0.0, 0.0, 1.0, 1.0, -1.0, -1.0
@@ -90,37 +184,8 @@ class GazeboPositionController(object):
             1.0, -1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0
         ]
 
-        self.imu_subscriber = rospy.Subscriber(imu_topic, sensor_msgs.msg.Imu, self.imu_callback, queue_size=1)
-
-        self.thruster_publishers = [
-            rospy.Publisher(
-                thruster_topic_name_format.format(thruster_id=i),
-                uuv_gazebo_ros_plugins_msgs.msg.FloatStamped,
-                queue_size=1
-            ) for i in range(n_thrusters)
-        ]
-
-        self.state_publisher = rospy.Publisher(
-            '~state',
-            localization_informed_planning_sim.msg.GlobalPositionControllerState,
-            queue_size=1
-        )
-
-        self.breadcrumb_subscriber = rospy.Subscriber(
-            breadcrumb_position_topic,
-            geometry_msgs.msg.Point,
-            self.breadcrumb_callback,
-        )
-
-        self.ground_truth_position_subscriber = rospy.Subscriber(
-            ground_truth_position_topic,
-            nav_msgs.msg.Odometry,
-            self.global_position_callback,
-            queue_size=1
-        )
-
     def set_controller_target_callback(self, request):
-        rospy.loginfo("Setting controller target using using service call in GazeboPositionController")
+        rospy.loginfo("Setting controller target using using service call in GlobalPositionController")
         rospy.loginfo("Setting goal position to {}".format(request.target_position))
         self.latest_goal_position = request.target_position
 
@@ -131,8 +196,33 @@ class GazeboPositionController(object):
         return True
 
     def wait_for_sensor_information(self):
-        while not rospy.is_shutdown() and self.latest_ground_truth_position is None and self.latest_imu is None:
-            rospy.sleep(0.1)
+        rospy.loginfo("Global position controller waiting for sensor data...")
+
+        i = 0
+        if self.simulation_mode:
+            while not rospy.is_shutdown() and (self.latest_ground_truth_position is None or self.latest_imu is None):
+                rospy.sleep(0.1)
+                i = i + 1
+
+                if i % 50 == 0:
+                    rospy.loginfo("Global position controller waiting on simulation sensor information....")
+            rospy.loginfo("Got necessary simulation position information! Starting...")
+            return 
+        else:
+            while not rospy.is_shutdown() and (self.latest_imu is None or self.latest_breadcrumb_position is None):
+               rospy.sleep(0.1)
+               i = i + 1
+
+               if i % 50 == 0:
+                   rospy.loginfo("Global position controller waiting on live test sensor information....")
+                   rospy.loginfo("Latest breadcrumb: {}".format(self.latest_breadcrumb_position))
+                   rospy.loginfo("Latest imu: {}".format(self.latest_imu))
+
+            rospy.loginfo("Got sensor data!")
+            rospy.loginfo("Latest breadcrumb: {}".format(self.latest_breadcrumb_position))
+            rospy.loginfo("Latest imu: {}".format(self.latest_imu))
+
+        rospy.sleep(5.0)
 
     def publish_state(self):
         error = self.controller.get_error()
@@ -155,6 +245,7 @@ class GazeboPositionController(object):
             self.to_xyzrpy(self.latest_goal_position)
         )
         current_position = self.get_latest_position_from_selected_source()
+
         self.controller.set_current_position(
             current_position
         )
@@ -172,8 +263,8 @@ class GazeboPositionController(object):
         self.action_server.set_succeeded()
 
     def error_is_in_range(self, error):
-        error_range = 0.25
-        if abs(error[0]) < error_range and abs(error[1]) < error_range and abs(error[2]) < error_range:
+        error_range = 0.10
+        if abs(error[0]) < error_range and abs(error[1]) < error_range and abs(error[2]) < 100.0 and abs(error[5]) < 0.10:
             return True
         
         return False
@@ -202,7 +293,21 @@ class GazeboPositionController(object):
 
             return [translation[0], translation[1], translation[2], r, p, yaw]
 
-        raise Exception(":bbbbbbbbbbbbbbbbbbbbb")
+        if self.selected_location_source == 'breadcrumb':
+            r, p, _ = transformations.euler_from_quaternion([
+                self.latest_imu.orientation.x,     
+                self.latest_imu.orientation.y,     
+                self.latest_imu.orientation.z,     
+                self.latest_imu.orientation.w
+            ])
+
+            x = self.latest_breadcrumb_position.position.x
+            y = self.latest_breadcrumb_position.position.y
+            z = self.latest_breadcrumb_position.position.z
+            print 'z is {}'.format(z)
+            yaw = self.latest_breadcrumb_position.relative_yaw
+
+            return [x,y,z,r,p,yaw]
 
     def to_xyzrpy(self, pose):
         result = [
@@ -231,46 +336,65 @@ class GazeboPositionController(object):
             rospy.logwarn("No current position available")
             return
 
-        self.controller.set_current_velocity([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.controller.set_current_velocity([0.0, 0.0, 0.0, 0.0, 0.0, -self.latest_imu.angular_velocity.z])
         self.controller.set_current_position(
             current_position
         )
 
         self.controller.set_latest_imu_reading(self.latest_imu)
 
-        zrp_thrust = self.controller.get_zrp_thrust_vector()
-        xyyaw_thrust = self.controller.get_xyyaw_thrust_vector()
-        thrust_vector = xyyaw_thrust + zrp_thrust
+        if self.simulation_mode:
+            zrp_thrust = self.controller.get_zrp_thrust_vector()
+            xyyaw_thrust = self.controller.get_xyyaw_thrust_vector()
+            thrust_vector = xyyaw_thrust + zrp_thrust
 
-        motor_intensities = self.controller.convert_thrust_vector_to_motor_intensities(thrust_vector)
+            motor_intensities = self.controller.convert_thrust_vector_to_motor_intensities(thrust_vector)
 
-        for i, publisher in enumerate(self.thruster_publishers):
-            message = uuv_gazebo_ros_plugins_msgs.msg.FloatStamped(
-                data=motor_intensities[i] * 1000.0
-            )
+            for i, publisher in enumerate(self.thruster_publishers):
+                message = uuv_gazebo_ros_plugins_msgs.msg.FloatStamped(
+                    data=motor_intensities[i] * 1000.0
+                )
 
-            publisher.publish(
-                message
-            )
+                publisher.publish(
+                    message
+                )
+        else:
+            rc_override_message = self.controller.get_next_rc_override()
+            if not self.dry_run_mode:
+                self.rc_override_publisher.publish(rc_override_message)
+            else:
+                rospy.loginfo("Dry run. Overrides would be {}".format(rc_override_message))
 
     def breadcrumb_callback(self, msg):
-        self.latest_breadcrumb_position = [msg.x, msg.y, msg.z]
+        self.latest_breadcrumb_position = msg
 
     def global_position_callback(self, msg):
         self.latest_ground_truth_position = msg
 
     def run(self):
         self.action_server.start()
+        rospy.loginfo("Starting controller run loop!")
 
         while not rospy.is_shutdown():
             if self.latest_goal_position is not None:
+                #rospy.loginfo("Publishing to thrusters")
                 self.publish_thruster_updates()
                 self.publish_state()
 
-            rospy.sleep(0.01)
+            if not self.simulation_mode:
+                max_breadcrumb_age = 5.0
+
+                if self.latest_breadcrumb_position is not None and (rospy.Time.now() - self.latest_breadcrumb_position.header.stamp).to_sec() > max_breadcrumb_age:
+                    rospy.logwarn("Terminating! No breadcrumb data for {} seconds".format(max_breadcrumb_age))
+                    utils.set_motor_arming(False)
+                    return
+
+            rospy.sleep(0.03)
 
 if __name__ == '__main__':
     rospy.init_node('ground_truth_position_controller')
-    controller_node = GazeboPositionController()
+    controller_node = GlobalPositionController()
     controller_node.wait_for_sensor_information()
+    controller_node.arm_if_necessary()
+
     controller_node.run()
