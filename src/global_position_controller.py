@@ -95,20 +95,20 @@ class GlobalPositionController(object):
         )
 
         self.pid_gains = dict(
-            x_p=-2.00,
+            x_p=2.00,
             y_p=2.0,
             yaw_p=2.0, 
             x_d=-0.0, 
             y_d=-0.00,
             yaw_d=1.0,
-            x_i=0.0,
-            y_i=0.0,
+            x_i=0.2,
+            y_i=0.2,
             yaw_i=0.10,
             roll_p=1.0,
             roll_i=0.00,
             roll_d=-0.50,
-            z_p=0.00,
-            z_i=0.00,#config.DEFAULT_Z_I_GAIN,
+            z_p=1.00,
+            z_i=0.02,#config.DEFAULT_Z_I_GAIN,
             z_d=0.00,
             pitch_p=-1.0,
             pitch_i=-0.0,
@@ -304,7 +304,7 @@ class GlobalPositionController(object):
             x = self.latest_breadcrumb_position.position.x
             y = self.latest_breadcrumb_position.position.y
             z = self.latest_breadcrumb_position.position.z
-            print 'z is {}'.format(z)
+            #print 'p is {}'.format([x,y,z])
             yaw = self.latest_breadcrumb_position.relative_yaw
 
             return [x,y,z,r,p,yaw]
@@ -363,7 +363,8 @@ class GlobalPositionController(object):
             if not self.dry_run_mode:
                 self.rc_override_publisher.publish(rc_override_message)
             else:
-                rospy.loginfo("Dry run. Overrides would be {}".format(rc_override_message))
+                #rospy.loginfo("Dry run. Overrides would be {}".format(rc_override_message))
+                pass
 
     def breadcrumb_callback(self, msg):
         self.latest_breadcrumb_position = msg
@@ -396,5 +397,4 @@ if __name__ == '__main__':
     controller_node = GlobalPositionController()
     controller_node.wait_for_sensor_information()
     controller_node.arm_if_necessary()
-
     controller_node.run()

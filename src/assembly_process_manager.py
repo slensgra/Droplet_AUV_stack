@@ -409,15 +409,16 @@ class AssemblyProcessManager():
         state_machine = smach.StateMachine(['succeeded', 'aborted', 'preempted'])
 
         action_number = 0
-        pause_time = 5.0
+        pause_time = 15.0
         goal_positions = [
             [0.0, 0.0, 0.8, 0.0, 0.0, 0.0],
             [0.0, 0.0, 0.8, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.8, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.8, 0.0, 0.0, math.pi/3.0],
-            [0.5, 0.0, 0.8, 0.0, 0.0, math.pi/3.0],
-            [-0.5, 0.0, 0.75, 0.0, 0.0, math.pi/3.0],
-            [0.0, 0.0, 0.80, 0.0, 0.0, math.pi/2.0],
+            [0.0, 0.0, 0.8, 0.0, 0.0, math.pi / 4.0],
+            [0.0, 0.0, 0.8, 0.0, 0.0, math.pi / 4.0],
+            [0.0, 0.0, 0.8, 0.0, 0.0, math.pi / 2.0],
+            [0.0, 0.0, 0.8, 0.0, 0.0, math.pi / 2.0],
+            [0.0, 0.0, 0.8, 0.0, 0.0, math.pi],
+            [0.0, 0.0, 0.8, 0.0, 0.0, math.pi],
         ]
         with state_machine:
             for i, goal_pose in enumerate(goal_positions):

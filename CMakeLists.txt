@@ -34,7 +34,7 @@ include_directories(
 # ${catkin_INCLUDE_DIRS}
 )
 
-install(DIRECTORY launch robots msg
+install(DIRECTORY launch robots msg param
         DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
         PATTERN "*~" EXCLUDE)
 

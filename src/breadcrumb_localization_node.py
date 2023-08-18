@@ -20,8 +20,8 @@ class BreadcrumbLocalizer():
         self.camera_matrix = None
         self.distortion = np.zeros(4)
         self.global_positions_by_id = {
-            2: np.array([-1.11/2.0, 0.0, 0.0]),
-            3: np.array([1.11/2.0, 0.0, 0.0]),
+            2: np.array([0.0, 1.11/2.0, 0.0]),
+            3: np.array([0.0, -1.11/2.0, 0.0]),
         }
         self.structure_yaw_offset = 0.0
         self.global_yaw_imu = 0.0
@@ -128,8 +128,8 @@ class BreadcrumbLocalizer():
                         corners_reading,
                         K=self.camera_matrix,
                         D=self.distortion,
-                        R=np.eye(3),
-                        P=self.camera_matrix
+                        #R=np.eye(3),
+                        #P=self.camera_matrix
                     )
 
                 _, rvec, tvec = cv2.solvePnP(
@@ -137,17 +137,35 @@ class BreadcrumbLocalizer():
                     imagePoints=corners_undist,
                     cameraMatrix=np.eye(3),#self.camera_matrix,
                     distCoeffs=np.zeros((1,5)),
-                    #flags=cv2.SOLVEPNP_IPPE,
+                    flags=cv2.SOLVEPNP_IPPE,
                 )
 
-                rotation_mat, _ = cv2.Rodrigues(rvec)
-                one_row = np.array([0.0, 0.0, 0.0, 1.0]).reshape((4, 1))
-                homogenous_rotation = np.vstack((rotation_mat, np.array([0.0, 0.0, 0.0])))
-                homogenous_rotation = np.hstack((homogenous_rotation, one_row))
-                _, _, relative_yaw = transformations.euler_from_matrix(homogenous_rotation, 'sxyz') 
+                if tvec[2] > 0:
+                    rotation_mat, _ = cv2.Rodrigues(rvec)
+                    one_row = np.array([0.0, 0.0, 0.0, 1.0]).reshape((4, 1))
+                    homogenous_rotation = np.vstack((rotation_mat, np.array([0.0, 0.0, 0.0])))
+                    homogenous_rotation = np.hstack((homogenous_rotation, one_row))
+                    #print(tvec)
+                    #print(tvec.reshape(3))
+                    #print('before', tvec)
+                    translation_matrix = transformations.translation_matrix(tvec.reshape(3))
 
-                relative_positions_by_id[target_marker] = relative_positions_by_id[target_marker] + [tvec]
-                yaw_by_id[target_marker] = relative_yaw 
+                    marker_in_cam_frame = transformations.concatenate_matrices(homogenous_rotation, translation_matrix)
+
+                    #print('marker cam frame', transformations.decompose_matrix(marker_in_cam_frame)[3])
+                    rot_inv = transformations.inverse_matrix(homogenous_rotation)
+                    test = transformations.concatenate_matrices(rot_inv, translation_matrix)
+                    print('tvec', tvec)
+                    _, _, euler_angles, translation, _ = transformations.decompose_matrix(test)
+                    print(translation)
+                    #print('after', translation, euler_angles)
+
+                    #_, _, relative_yaw = transformations.euler_from_matrix(homogenous_rotation, 'sxyz') 
+
+                    relative_positions_by_id[target_marker] = relative_positions_by_id[target_marker] + [-translation]
+                    yaw_by_id[target_marker] = euler_angles[2]
+                else:
+                    rospy.logwarn("Invalid marker reading")
 
         return relative_positions_by_id, yaw_by_id
 
@@ -181,6 +199,7 @@ class BreadcrumbLocalizer():
         if len(relative_position_by_id.keys()) == 0:
             return
 
+        print("relative positions {}".format(relative_position_by_id))
         average_yaw = sum([i for i in yaw_by_id.values()]) / float(len(yaw_by_id.keys()))
 
         fused_position = self.get_fused_position(relative_position_by_id)
@@ -222,27 +241,47 @@ class BreadcrumbLocalizer():
         small_eigval = 1e-4
         large_eigval = 1e-2
 
-        largest_eigvec = relative_position / np.linalg.norm(relative_position)
-        small_eigvec_1 = self.get_orthogonal_vector(largest_eigvec)
-        small_eigvec_2 = np.cross(largest_eigvec, small_eigvec_1)
-        small_eigvec_2 = small_eigvec_2 / np.linalg.norm(small_eigvec_2)
-
-        S = np.hstack([
-            largest_eigvec.reshape((3,1)),
-            small_eigvec_1.reshape((3, 1)),
-            small_eigvec_2.reshape((3,1))
+        eigval_matrix = np.array([
+            [large_eigval, 0.0, 0.0],
+            [0.0, small_eigval, 0.0],
+            [0.0, 0.0, small_eigval]
         ])
 
-        return np.matmul(
-            S.transpose(), 
-            np.matmul(
-                np.diag([large_eigval, small_eigval, small_eigval]),
-                S
-            )
-        )
-    
+        largest_eigvec = relative_position / np.linalg.norm(relative_position)
+        eigvec_1 = np.cross(largest_eigvec, np.array([largest_eigvec[0], largest_eigvec[1] + 0.5, largest_eigvec[2]]))
+        eigvec_2 = np.cross(largest_eigvec, eigvec_1)
+
+        eigvec_1 = eigvec_1 / np.linalg.norm(eigvec_1)
+        eigvec_2 = eigvec_2 / np.linalg.norm(eigvec_2)
+
+        largest_eigvec = largest_eigvec[..., None]
+        eigvec_1 = eigvec_1[..., None]
+        eigvec_2 = eigvec_2[..., None]
+
+        S = np.hstack([largest_eigvec, eigvec_1, eigvec_2])
+        return S.dot(eigval_matrix).dot(np.linalg.inv(S))
+
+        #largest_eigvec = relative_position / np.linalg.norm(relative_position)
+        #small_eigvec_1 = self.get_orthogonal_vector(largest_eigvec)
+        #small_eigvec_2 = np.cross(largest_eigvec, small_eigvec_1)
+        #small_eigvec_2 = small_eigvec_2 / np.linalg.norm(small_eigvec_2)
+
+        #S = np.hstack([
+        #    largest_eigvec.reshape((3,1)),
+        #    small_eigvec_1.reshape((3,1)),
+        #    small_eigvec_2.reshape((3,1))
+        #])
+        #print "Largest eigvec {}".format(largest_eigvec)
+        #print "small eigvec1 {}".format(small_eigvec_1)
+        #print "small eigvec2 {}".format(small_eigvec_2)
+        #print "S is {}".format(S)
+        #eigval_matrix = np.diag([large_eigval, small_eigval, small_eigval])
+
+        #return S.dot(eigval_matrix).dot(np.linalg.inv(S))
+
     def fuse_positions(self, measured_positions, covariances):
         # assuming positions is of length 2
+        #print("Fusing {}".format(measured_positions))
 
         if len(measured_positions) == 1:
             return measured_positions[0], covariances[0]
@@ -253,9 +292,10 @@ class BreadcrumbLocalizer():
         #if len(covariances) != 2:
         #    raise Exception("Can only fuse two covariances")
         
-        elif len(measured_positions) <= 4:
+        elif len(measured_positions) == 2:
+            #print("Fusing here!")
             K = np.matmul(covariances[0], np.linalg.inv(covariances[0] + covariances[1]))
-            fused_covariance = covariances[1] - np.matmul(K, covariances[1])
+            fused_covariance = covariances[0] - np.matmul(K, covariances[0])
             fused_position = measured_positions[0] + np.matmul(K, measured_positions[1] - measured_positions[0])
 
             return fused_position, fused_covariance
@@ -275,8 +315,10 @@ class BreadcrumbLocalizer():
             covariance = self.get_predicted_covariance_for_marker_relative_position(position_formatted)
             measured_positions.append(measured_position)
             covariances.append(covariance)
-
+        
+        print("Measured positions", measured_positions)
         fused_position, fused_covariance = self.fuse_positions(measured_positions, covariances)
+        #print("Result {}".format(fused_position))
         return fused_position
 
 
