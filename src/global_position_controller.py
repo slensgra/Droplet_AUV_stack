@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import copy
 import numpy as np
 
 import roslib
@@ -10,7 +11,6 @@ import sensor_msgs.msg
 import mavros_msgs.msg
 import nav_msgs.msg
 from tf import transformations
-
 
 from droplet_underwater_assembly_libs import trajectory_tracker, config, utils
 import localization_informed_planning_sim.msg
@@ -34,6 +34,7 @@ class GlobalPositionController(object):
         self.initial_goal_position = rospy.get_param('~initial_goal_position', None)
         rospy.loginfo("Moving to initial goal position {}".format(self.initial_goal_position))
         self.initial_goal_position = [0.0, 0.0, 0.8, 0.0, 0.0, 0.0]
+        self.plunge_service_server = rospy.Service('plunge_action', localization_informed_planning_sim.srv.PlungeAction, self.do_plunge_action)
 
         if self.simulation_mode:
             self.imu_topic = '/rexrov/imu'
@@ -236,25 +237,47 @@ class GlobalPositionController(object):
 
         self.state_publisher.publish(message)
 
+    def do_plunge_action(self, message):
+        rospy.loginfo("Starting plunge for {} seconds".format(message.plunge_duration))
+        self.controller.x_p = 0.0
+        self.controller.x_i = 0.0
+        self.controller.x_d = 0.0
+        self.controller.y_p = 0.0
+        self.controller.y_i = 0.0
+        self.controller.y_d = 0.0
+        #self.controller.z_p = 0.0
+        self.controller.z_i = 0.0
+        self.controller.z_d = 0.0
+
+        previous_goal = copy.deepcopy(self.controller.goal_position)
+        plunge_goal = copy.deepcopy(self.controller.goal_position)
+        plunge_goal[2] = plunge_goal[2] - 0.4
+        self.controller.set_goal_position(plunge_goal)
+        rospy.sleep(message.plunge_duration)
+
+        self.controller.set_goal_position(previous_goal)
+        self.controller.x_p = self.pid_gains['x_p']
+        self.controller.x_i = self.pid_gains['x_i']
+        self.controller.x_d = self.pid_gains['x_d']
+        self.controller.y_p = self.pid_gains['y_p']
+        self.controller.y_i = self.pid_gains['y_i']
+        self.controller.y_d = self.pid_gains['y_d']
+        self.controller.z_p = self.pid_gains['z_p']
+        self.controller.z_i = self.pid_gains['z_i']
+        self.controller.z_d = self.pid_gains['z_d']
+        rospy.loginfo("Completed plunge")
+
+        return True
+
     def start_moving_to_position(self, goal):
         rospy.loginfo("gazebo position controller starting move to position, {}".format(goal))
         self.latest_goal_position = goal.target_position
         self.selected_location_source = goal.position_source
-
         self.controller.set_goal_position(
             self.to_xyzrpy(self.latest_goal_position)
         )
-        current_position = self.get_latest_position_from_selected_source()
-
-        self.controller.set_current_position(
-            current_position
-        )
-        self.controller.set_latest_imu_reading(self.latest_imu)
 
         while not rospy.is_shutdown() and not self.error_is_in_range(self.controller.get_error()):
-            #self.publish_thruster_updates()
-            #self.publish_state()
-
             if self.action_server.is_preempt_requested():
                 self.action_server.set_preempted()
                 return

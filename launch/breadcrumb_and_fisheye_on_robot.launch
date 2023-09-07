@@ -11,6 +11,8 @@
 
     <include file="$(find  mini_ahrs_ros)/launch/mini_ahrs_standalone.launch"/>
 
+    <node name="gripper_handler" pkg="localization_informed_planning_sim" type="gripper_handler_node.py" required="true" output="screen">
+
     <node name="localization" pkg="localization_informed_planning_sim" type="breadcrumb_localization_node.py" required="true" output="screen">
 	    <param name="fisheye_mode" type="bool" value="true"/>
 	    <param name="image_topic" type="string" value="/camera_array/cam1/image_raw"/>
