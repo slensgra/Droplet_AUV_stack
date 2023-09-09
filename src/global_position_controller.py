@@ -214,10 +214,11 @@ class GlobalPositionController(object):
                rospy.sleep(0.1)
                i = i + 1
 
-               if i % 50 == 0:
+               if i % 300 == 0:
                    rospy.loginfo("Global position controller waiting on live test sensor information....")
-                   rospy.loginfo("Latest breadcrumb: {}".format(self.latest_breadcrumb_position))
-                   rospy.loginfo("Latest imu: {}".format(self.latest_imu))
+                   #rospy.loginfo("Latest breadcrumb: {}".format(self.latest_breadcrumb_position))
+                   #rospy.loginfo("Latest imu: {}".format(self.latest_imu))
+                   pass
 
             rospy.loginfo("Got sensor data!")
             rospy.loginfo("Latest breadcrumb: {}".format(self.latest_breadcrumb_position))
@@ -286,7 +287,7 @@ class GlobalPositionController(object):
         self.action_server.set_succeeded()
 
     def error_is_in_range(self, error):
-        error_range = 0.10
+        error_range = 0.05
         if abs(error[0]) < error_range and abs(error[1]) < error_range and abs(error[2]) < 100.0 and abs(error[5]) < 0.10:
             return True
         

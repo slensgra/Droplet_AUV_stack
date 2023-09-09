@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import threading
 
 import rospy
@@ -6,6 +7,7 @@ import actionlib
 from droplet_underwater_assembly_libs import config
 
 import localization_informed_planning_sim.srv
+import localization_informed_planning_sim.msg
 
 
 class GripperHandlerNode():
@@ -34,6 +36,8 @@ class GripperHandlerNode():
             self.action_server.set_aborted()
 
     def open_fingers(self, goal):
+        plunge_thread = threading.Thread(target=self.plunge_service_proxy, args=(config.GRIPPER_OPEN_TIME,))
+        plunge_thread.start()
         if self.is_open:
             self.action_server.set_succeeded()
             return
@@ -44,6 +48,7 @@ class GripperHandlerNode():
 
         self.is_open = True
         self.action_server.set_succeeded()
+        plunge_thread.join()
 
     def close_fingers(self, goal):
         plunge_thread = threading.Thread(target=self.plunge_service_proxy, args=(config.GRIPPER_OPEN_TIME,))
@@ -62,6 +67,7 @@ class GripperHandlerNode():
         plunge_thread.join()
     
     def run(self):
+        self.action_server.start()
         while not rospy.is_shutdown():
             self.gripper_handler.update()
             rospy.sleep(0.05)

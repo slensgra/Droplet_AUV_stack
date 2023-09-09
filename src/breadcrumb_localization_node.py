@@ -20,8 +20,8 @@ class BreadcrumbLocalizer():
         self.camera_matrix = None
         self.distortion = np.zeros(4)
         self.global_positions_by_id = {
-            2: np.array([0.0, 1.11/2.0, 0.0]),
-            3: np.array([0.0, -1.11/2.0, 0.0]),
+            2: np.array([-0.205, 0.0, 0.0]),
+            3: np.array([-0.205*4.0, 0.0, 0.0]),
         }
         self.structure_yaw_offset = 0.0
         self.global_yaw_imu = 0.0
@@ -81,7 +81,8 @@ class BreadcrumbLocalizer():
 
         self.fused_position_publisher = rospy.Publisher(
             'fused_position',
-            localization_informed_planning_sim.msg.BreadcrumbLocalizationResult
+            localization_informed_planning_sim.msg.BreadcrumbLocalizationResult,
+            queue_size=1
         )
 
         self.set_marker_position_service = rospy.Service(
@@ -155,9 +156,9 @@ class BreadcrumbLocalizer():
                     #print('marker cam frame', transformations.decompose_matrix(marker_in_cam_frame)[3])
                     rot_inv = transformations.inverse_matrix(homogenous_rotation)
                     test = transformations.concatenate_matrices(rot_inv, translation_matrix)
-                    print('tvec', tvec)
+                    #print('tvec', tvec)
                     _, _, euler_angles, translation, _ = transformations.decompose_matrix(test)
-                    print(translation)
+                    #print(translation)
                     #print('after', translation, euler_angles)
 
                     #_, _, relative_yaw = transformations.euler_from_matrix(homogenous_rotation, 'sxyz') 
@@ -199,7 +200,7 @@ class BreadcrumbLocalizer():
         if len(relative_position_by_id.keys()) == 0:
             return
 
-        print("relative positions {}".format(relative_position_by_id))
+        #print("relative positions {}".format(relative_position_by_id))
         average_yaw = sum([i for i in yaw_by_id.values()]) / float(len(yaw_by_id.keys()))
 
         fused_position = self.get_fused_position(relative_position_by_id)
@@ -316,7 +317,7 @@ class BreadcrumbLocalizer():
             measured_positions.append(measured_position)
             covariances.append(covariance)
         
-        print("Measured positions", measured_positions)
+        #print("Measured positions", measured_positions)
         fused_position, fused_covariance = self.fuse_positions(measured_positions, covariances)
         #print("Result {}".format(fused_position))
         return fused_position
