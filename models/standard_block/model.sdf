@@ -9,7 +9,7 @@
       <visual name='visual'>
         <geometry>
           <box>
-            <size>1.2 1.2 1.2</size>
+            <size>1.2 1.2 0.6</size>
           </box>
         </geometry>
         <material>
@@ -28,7 +28,7 @@
         <pose frame=''>0 0 0 0 -0 0</pose>
         <geometry>
           <box>
-            <size>1.2 1.2 1.2</size>
+            <size>1.2 1.2 0.6</size>
           </box>
         </geometry>
       </collision>

@@ -27,14 +27,14 @@
     <!-- rexrov robot with oberon7 arm -->
     <include file="$(find localization_informed_planning_sim)/launch/upload_auv_description.launch">
         <arg name="namespace" value="rexrov"/>
-        <arg name="x" value="4"/>
-        <arg name="y" value="4"/>
+        <arg name="x" value="0"/>
+        <arg name="y" value="0"/>
         <arg name="z" value="-93"/>
         <arg name="yaw" value="-1.8"/>
     </include>
 
-    <node name="controller" pkg="localization_informed_planning_sim" type="global_position_controller.py" required="true" output="screen"/>
-    <node name="localization" pkg="localization_informed_planning_sim" type="breadcrumb_localization_node.py" required="true" output="screen"/>
-    <node name="assembly_manager" pkg="localization_informed_planning_sim" type="assembly_process_manager.py" required="true" output="screen"/>
-    <node name="grasp_simulator" pkg="localization_informed_planning_sim" type="grasp_drop_simulator.py" required="true" output="screen"/>
+    <!--<node name="controller" pkg="localization_informed_planning_sim" type="global_position_controller.py" required="true" output="screen"/>-->
+    <!--<node name="localization" pkg="localization_informed_planning_sim" type="breadcrumb_localization_node.py" required="true" output="screen"/>-->
+    <!--<node name="assembly_manager" pkg="localization_informed_planning_sim" type="assembly_process_manager.py" required="true" output="screen"/>-->
+    <!--<node name="grasp_simulator" pkg="localization_informed_planning_sim" type="grasp_drop_simulator.py" required="true" output="screen"/>-->
 </launch>
