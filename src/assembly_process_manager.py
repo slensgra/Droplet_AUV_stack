@@ -40,7 +40,9 @@ class AssemblyProcessManager():
 if __name__ == '__main__':
     manager = AssemblyProcessManager()
     real_world_build_plan_constructor = RealWorldBuildPlanConstructor()
-    state_machine = real_world_build_plan_constructor.get_manipulator_test_state_machine()
+    #state_machine = real_world_build_plan_constructor.get_manipulator_test_state_machine()
+    #state_machine = real_world_build_plan_constructor.get_controller_test_state_machine()
+    state_machine = real_world_build_plan_constructor.one_hop_plan()
 
     introspection_server = smach_ros.IntrospectionServer('assembly_state_machine', state_machine, '/SM_ROOT')
     introspection_server.start()

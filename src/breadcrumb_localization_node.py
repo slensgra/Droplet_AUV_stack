@@ -1,5 +1,5 @@
 #!/usr/bin/python
-
+import math
 import collections
 
 import numpy as np
@@ -20,18 +20,27 @@ class BreadcrumbLocalizer():
         self.camera_matrix = None
         self.distortion = np.zeros(4)
         self.global_positions_by_id = {
-            2: np.array([-0.205, 0.0, 0.0]),
-            3: np.array([-0.205*4.0, 0.0, 0.0]),
+            2: np.array([-0.205*0.0, 0.0, 0.0, math.pi]),
+            3: np.array([-0.205*5.0, 0.0, 0.0, 0.0]),
         }
         self.structure_yaw_offset = 0.0
         self.global_yaw_imu = 0.0
+        self.masked_markers = set()
 
     def set_marker_position(self, message):
         self.global_positions_by_id[message.marker_id] = np.array([
             message.x,
             message.y,
-            message.z
+            message.z,
+            message.yaw
         ])
+
+        if message.masked:
+            self.masked_markers.add(message.marker_id)
+
+        if not message.masked:
+            if message.marker_id in self.masked_markers:
+                self.masked_markers.remove(message.marker_id)
 
         return localization_informed_planning_sim.srv.SetGlobalPositionResponse(
             success=True
@@ -110,6 +119,12 @@ class BreadcrumbLocalizer():
         yaw_by_id = {}
 
         for target_marker in corners_by_id.keys():
+            if target_marker in self.masked_markers:
+                continue
+
+            if target_marker not in self.global_positions_by_id:
+                continue
+
             for corners_reading in corners_by_id[target_marker]:
                 corners_undist = None
 
@@ -122,21 +137,16 @@ class BreadcrumbLocalizer():
                         P=self.camera_matrix
                     )
                 else:
-                    #rospy.loginfo("Undistorting here....")
-                    #rospy.loginfo("Camera mat {}".format(self.camera_matrix))
-                    #rospy.loginfo("distortion {}".format(self.distortion))
                     corners_undist = cv2.fisheye.undistortPoints(
                         corners_reading,
                         K=self.camera_matrix,
                         D=self.distortion,
-                        #R=np.eye(3),
-                        #P=self.camera_matrix
                     )
 
                 _, rvec, tvec = cv2.solvePnP(
                     objectPoints=local_corners,
                     imagePoints=corners_undist,
-                    cameraMatrix=np.eye(3),#self.camera_matrix,
+                    cameraMatrix=np.eye(3),
                     distCoeffs=np.zeros((1,5)),
                     flags=cv2.SOLVEPNP_IPPE,
                 )
@@ -146,28 +156,31 @@ class BreadcrumbLocalizer():
                     one_row = np.array([0.0, 0.0, 0.0, 1.0]).reshape((4, 1))
                     homogenous_rotation = np.vstack((rotation_mat, np.array([0.0, 0.0, 0.0])))
                     homogenous_rotation = np.hstack((homogenous_rotation, one_row))
-                    #print(tvec)
-                    #print(tvec.reshape(3))
-                    #print('before', tvec)
-                    translation_matrix = transformations.translation_matrix(tvec.reshape(3))
+                    translation_matrix = transformations.translation_matrix(-tvec.reshape(3))
+                    #print(translation_matrix)
 
-                    marker_in_cam_frame = transformations.concatenate_matrices(homogenous_rotation, translation_matrix)
-
-                    #print('marker cam frame', transformations.decompose_matrix(marker_in_cam_frame)[3])
                     rot_inv = transformations.inverse_matrix(homogenous_rotation)
-                    test = transformations.concatenate_matrices(rot_inv, translation_matrix)
-                    #print('tvec', tvec)
-                    _, _, euler_angles, translation, _ = transformations.decompose_matrix(test)
-                    #print(translation)
-                    #print('after', translation, euler_angles)
+                    vehicle_in_marker_frame = transformations.concatenate_matrices(rot_inv, translation_matrix)
+                    #vehicle_in_marker_frame = transformations.concatenate_matrices(homogenous_)
+                    #print(transformations.decompose_matrix(vehicle_in_marker_frame)[3])
+                    #_, _, euler_angles, translation, _ = transformations.decompose_matrix(vehicle_in_marker_frame)
+                    world_to_marker = transformations.concatenate_matrices(
+                        transformations.translation_matrix(self.global_positions_by_id[target_marker][:3]),
+                        transformations.euler_matrix(0.0, 0.0, self.global_positions_by_id[target_marker][3], 'sxyz')
+                    )
+                    marker_to_world = transformations.inverse_matrix(world_to_marker)
+                    vehicle_in_world = np.dot(world_to_marker, vehicle_in_marker_frame)
+                    _, _, euler_angles, translation, _ = transformations.decompose_matrix(vehicle_in_world)
+                    #print('vehicle_in_world', vehicle_in_world)
+                    #print('eul', euler_angles)
+                    #print('trans', translation)
 
-                    #_, _, relative_yaw = transformations.euler_from_matrix(homogenous_rotation, 'sxyz') 
-
-                    relative_positions_by_id[target_marker] = relative_positions_by_id[target_marker] + [-translation]
+                    relative_positions_by_id[target_marker] = [translation]#relative_positions_by_id[target_marker] + [-translation]
                     yaw_by_id[target_marker] = euler_angles[2]
                 else:
                     rospy.logwarn("Invalid marker reading")
 
+        #print(relative_positions_by_id)
         return relative_positions_by_id, yaw_by_id
 
     def image_callback(self, image_msg):
@@ -309,12 +322,12 @@ class BreadcrumbLocalizer():
         measured_positions = []
         covariances = []
 
-        for marker_id, position in relative_positions_by_id.items():
-            position_formatted = position[0].flatten()
-            marker_global_position = self.global_positions_by_id[marker_id]
-            measured_position = marker_global_position + position_formatted
+        for marker_id, measured_position in relative_positions_by_id.items():
+            position_formatted = measured_position[0].flatten()
+            #marker_global_position = self.global_positions_by_id[marker_id][:3]
+            #measured_position = marker_global_position + position_formatted
             covariance = self.get_predicted_covariance_for_marker_relative_position(position_formatted)
-            measured_positions.append(measured_position)
+            measured_positions.append(position_formatted)
             covariances.append(covariance)
         
         #print("Measured positions", measured_positions)

@@ -44,27 +44,28 @@ class SpawnMarkerState(smach.State):
 
 
 class UpdateMarkerPositionState(smach.State):
-    def __init__(self, marker_id, updated_position, outcomes=['succeeded', 'aborted']):
+    def __init__(self, marker_id, position, masked, yaw, outcomes=['succeeded', 'aborted']):
         smach.State.__init__(self, outcomes=outcomes)
         self.marker_id = marker_id
-        self.updated_position = updated_position
+        self.position = position 
+        self.masked = masked
+        self.yaw = yaw
 
         self.set_marker_position_client = rospy.ServiceProxy(
             'set_marker_position',
             localization_informed_planning_sim.srv.SetGlobalPosition
         )
 
-    def send_marker_position_to_breadcrumb(self, marker_id, position):
+    def send_marker_position_to_breadcrumb(self):
         self.set_marker_position_client(
-            marker_id=marker_id,
-            x=position[1],
-            y=position[0], # intentionally done bc of frame mismatch
-            z=position[2]
+            marker_id=self.marker_id,
+            x=self.position[0],
+            y=self.position[1], # intentionally done bc of frame mismatch
+            z=self.position[2],
+            yaw=self.yaw,
+            masked=self.masked
         )
 
     def execute(self, userdata):
-        self.send_marker_position_to_breadcrumb(
-            marker_id=self.marker_id,
-            position=self.updated_position
-        )
+        self.send_marker_position_to_breadcrumb()
         return 'succeeded'

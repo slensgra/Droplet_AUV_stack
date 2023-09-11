@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import copy
+import sys
 import numpy as np
 
 import roslib
@@ -96,14 +97,14 @@ class GlobalPositionController(object):
         )
 
         self.pid_gains = dict(
-            x_p=2.00,
-            y_p=2.0,
+            x_p=2.50,
+            y_p=2.5,
             yaw_p=2.0, 
             x_d=-0.0, 
             y_d=-0.00,
             yaw_d=1.0,
-            x_i=0.2,
-            y_i=0.2,
+            x_i=config.DEFAULT_X_I_GAIN,
+            y_i=config.DEFAULT_Y_I_GAIN,
             yaw_i=0.10,
             roll_p=1.0,
             roll_i=0.00,
@@ -112,7 +113,7 @@ class GlobalPositionController(object):
             z_i=0.02,#config.DEFAULT_Z_I_GAIN,
             z_d=0.00,
             pitch_p=-1.0,
-            pitch_i=-0.0,
+            pitch_i=-0.1,
             pitch_d=0.50,
         )
 
@@ -267,6 +268,7 @@ class GlobalPositionController(object):
         self.controller.z_i = self.pid_gains['z_i']
         self.controller.z_d = self.pid_gains['z_d']
         rospy.loginfo("Completed plunge")
+        self.controller.clear_error_integrals()
 
         return True
 
@@ -287,8 +289,8 @@ class GlobalPositionController(object):
         self.action_server.set_succeeded()
 
     def error_is_in_range(self, error):
-        error_range = 0.05
-        if abs(error[0]) < error_range and abs(error[1]) < error_range and abs(error[2]) < 100.0 and abs(error[5]) < 0.10:
+        error_range = 0.04
+        if abs(error[0]) < error_range and abs(error[1]) < error_range and abs(error[2]) < error_range and abs(error[5]) < 0.10:
             return True
         
         return False
@@ -407,12 +409,12 @@ class GlobalPositionController(object):
                 self.publish_state()
 
             if not self.simulation_mode:
-                max_breadcrumb_age = 5.0
+                max_breadcrumb_age = 10.0
 
                 if self.latest_breadcrumb_position is not None and (rospy.Time.now() - self.latest_breadcrumb_position.header.stamp).to_sec() > max_breadcrumb_age:
                     rospy.logwarn("Terminating! No breadcrumb data for {} seconds".format(max_breadcrumb_age))
                     utils.set_motor_arming(False)
-                    return
+                    rospy.signal_shutdown('no marker')
 
             rospy.sleep(0.03)
 
