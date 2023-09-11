@@ -43,11 +43,11 @@
       <inertial>
         <mass>20.0</mass>
       </inertial>
-      <pose frame='marker'>0 0 -0.6001 0 -0 0</pose>
+      <pose frame='marker'>0 0 -0.2250 -0 0</pose>
       <visual name='visual'>
         <geometry>
           <box>
-            <size>1.2 1.2 1.2</size>
+            <size>1.2 1.2 0.45</size>
           </box>
         </geometry>
         <material>
@@ -73,7 +73,7 @@
         <pose frame=''>0 0 0 0 -0 0</pose>
         <geometry>
           <box>
-            <size>1.2 1.2 1.2</size>
+            <size>1.2 1.2 0.45</size>
           </box>
         </geometry>
       </collision>
