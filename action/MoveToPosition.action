@@ -1,5 +1,6 @@
 geometry_msgs/PoseStamped target_position
 string position_source
+bool clear_error_integrals
 ---
 geometry_msgs/PoseStamped final_position
 ---

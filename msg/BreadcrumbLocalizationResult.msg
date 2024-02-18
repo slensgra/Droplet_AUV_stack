@@ -3,3 +3,5 @@ geometry_msgs/Point position
 int32 num_visible_markers
 float32 structure_yaw
 float32 relative_yaw
+float32 relative_pitch
+float32 relative_roll

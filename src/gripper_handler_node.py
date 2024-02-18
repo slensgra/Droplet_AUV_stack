@@ -9,6 +9,8 @@ from droplet_underwater_assembly_libs import config
 import localization_informed_planning_sim.srv
 import localization_informed_planning_sim.msg
 
+from localization_informed_planning_sim_libs.ui_tube_pattern_publisher import UITubePatternFlipper
+
 
 class GripperHandlerNode():
     def __init__(self):
@@ -21,6 +23,14 @@ class GripperHandlerNode():
             self.start_actuating_gripper,
             False
         )
+
+        self.pattern_flipper = UITubePatternFlipper(
+            patterns=[
+                {'pattern': 'solid', 'type': 'led', 'r': 255, 'g': 0, 'b': 255},
+                {'pattern': 'chase', 'type': 'led', 'r': 255, 'g': 0, 'b': 255},
+            ],
+            flip_time=1.0
+        ) 
 
         self.plunge_service_proxy = rospy.ServiceProxy('plunge_action', localization_informed_planning_sim.srv.PlungeAction)
 
@@ -36,35 +46,54 @@ class GripperHandlerNode():
             self.action_server.set_aborted()
 
     def open_fingers(self, goal):
-        plunge_thread = threading.Thread(target=self.plunge_service_proxy, args=(config.GRIPPER_OPEN_TIME,))
-        plunge_thread.start()
         if self.is_open:
             self.action_server.set_succeeded()
+            rospy.loginfo('Open skipped. Fingers are already open!')
             return
+
+        plunge_thread = None
+        if goal.plunge:
+            plunge_thread = threading.Thread(
+                target=self.plunge_service_proxy,
+                args=(config.GRIPPER_OPEN_TIME,)
+            )
+            plunge_thread.start()
+
+        self.is_open = True
 
         self.gripper_handler.start_opening_fingers()
         while self.gripper_handler.is_opening:
-            pass
+            self.pattern_flipper.update()
+            rospy.sleep(0.05)
 
         self.is_open = True
         self.action_server.set_succeeded()
-        plunge_thread.join()
+
+        if plunge_thread is not None:
+            plunge_thread.join()
 
     def close_fingers(self, goal):
-        plunge_thread = threading.Thread(target=self.plunge_service_proxy, args=(config.GRIPPER_OPEN_TIME,))
-        plunge_thread.start()
+        plunge_thread = None
+
+        if goal.plunge:
+            plunge_thread = threading.Thread(target=self.plunge_service_proxy, args=(config.GRIPPER_OPEN_TIME,))
+            plunge_thread.start()
 
         if not self.is_open:
+            rospy.loginfo('close skipped. Fingers are already closed!')
             self.action_server.set_succeeded()
             return
 
         self.gripper_handler.start_closing_fingers()
         while self.gripper_handler.is_closing:
-            pass
+            self.pattern_flipper.update()
+            rospy.sleep(0.05)
 
         self.is_open = False
         self.action_server.set_succeeded()
-        plunge_thread.join()
+
+        if plunge_thread is not None:
+            plunge_thread.join()
     
     def run(self):
         self.action_server.start()

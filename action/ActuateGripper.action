@@ -1,4 +1,5 @@
 string position
+bool plunge
 ---
 bool success
 ---

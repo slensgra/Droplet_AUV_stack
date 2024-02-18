@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<launch>
+    <node pkg="rosbag" type="play" name="player" output="screen" args="--clock -r 0.5 /home/sam/data_loc_informed_planning/initial_fisheye_positioning/successful-two-hop-execution.bag"/>
+
+    <node name="republish" type="republish" pkg="image_transport" output="screen" args="compressed in:=/camera_array/cam1/image_raw raw out:=/image_raw"/>
+
+    <node name="localization" pkg="localization_informed_planning_sim" type="breadcrumb_localization_node.py" required="true" output="screen">
+	    <param name="fisheye_mode" type="bool" value="true"/>
+	    <param name="image_topic" type="string" value="/image_raw"/>
+	    <param name="camera_info_topic" type="string" value="/camera_array/cam1/camera_info"/>
+	    <param name="visualization_mode" type="bool" value="true"/>
+        <param name="spline_path" type="string" value="$(find localization_informed_planning_sim)/param/spline_largest_eigens.splinter"/>
+    </node>
+</launch>

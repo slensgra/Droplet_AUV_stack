@@ -10,6 +10,9 @@ import geometry_msgs.msg
 import cv2
 from cv2 import aruco
 from tf import transformations
+import std_msgs.msg
+#import splinter
+#splinter.load(splinter.load("/usr/local/lib/libsplinter-3-0.so"))
 
 import localization_informed_planning_sim.srv
 import localization_informed_planning_sim.msg
@@ -19,13 +22,23 @@ class BreadcrumbLocalizer():
         self.bridge = cv_bridge.CvBridge()
         self.camera_matrix = None
         self.distortion = np.zeros(4)
+        self.large_eigval_scaling_factor = 1.0
         self.global_positions_by_id = {
-            2: np.array([-0.205*0.0, 0.0, 0.0, math.pi]),
-            3: np.array([-0.205*5.0, 0.0, 0.0, 0.0]),
+            #2: np.array([0.0, 0.0, 0.0, 0.0]),
+            3: np.array([0.0, 0.00, 0.0, 0.0]),
         }
         self.structure_yaw_offset = 0.0
         self.global_yaw_imu = 0.0
         self.masked_markers = set()
+        self.visualization_mode = False
+        output_file = "/home/sam/two_hop_from_robot_view_with_stats.avi"
+
+        frame_width = 1440
+        frame_height = 1080
+        fps = 14
+
+        fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
+        self.video_writer = cv2.VideoWriter(output_file, fourcc, fps, (frame_width, frame_height))
 
     def set_marker_position(self, message):
         self.global_positions_by_id[message.marker_id] = np.array([
@@ -53,10 +66,25 @@ class BreadcrumbLocalizer():
             message.orientation.z,
             message.orientation.w
         ]
+
         self.global_yaw_imu = transformations.euler_from_quaternion(quaternion, 'sxyz')[2]
 
     def initialize_ros_node(self):
         rospy.init_node('breadcrumb_localizer')
+
+        self.visualization_mode = rospy.get_param('~visualization_mode', False)
+        if self.visualization_mode:
+            rospy.loginfo("Running in visualization mode!")
+
+        self.cstar_publisher = rospy.Publisher('~cstar', std_msgs.msg.Float64, queue_size=1) 
+        self.required_publisher = rospy.Publisher('~cstar_required', std_msgs.msg.Float64, queue_size=1) 
+
+        self.spline_path = rospy.get_param('~spline_path', None)
+        self.spline = None
+
+        if self.spline_path is not None:
+            self.spline = splinter.BSpline(self.spline_path)
+            rospy.loginfo("Loaded spline! {}".format(self.spline_path))
 
         image_topic = rospy.get_param('~image_topic', '/rexrov/rexrov/camera/camera_image')
         self.image_subscriber = rospy.Subscriber(
@@ -65,6 +93,9 @@ class BreadcrumbLocalizer():
             self.image_callback,
             queue_size=1
         )
+
+        if self.visualization_mode:
+            pass
 
         cam_info_topic = rospy.get_param('~camera_info_topic', '/rexrov/rexrov/camera/camera_info')
         self.camera_info_subscriber = rospy.Subscriber(
@@ -100,6 +131,15 @@ class BreadcrumbLocalizer():
             self.set_marker_position
         )
 
+        if self.visualization_mode:
+            self.camera_matrix = np.array([
+                [394.21498, 0.01273, 722.66487],
+                [0.0, 393.4325, 536.59619],
+                [0.0, 0.0, 1.0]
+            ])
+
+            self.distortion = np.array([-0.000133, 0.007506, -0.000986, -0.000111])
+
     def camera_info_callback(self, camera_msg):
         self.camera_matrix = np.array(camera_msg.K).reshape((3,3))
         self.distortion = np.array(camera_msg.D)[:4]
@@ -116,7 +156,9 @@ class BreadcrumbLocalizer():
         ])
 
         relative_positions_by_id = collections.defaultdict(lambda: [])
+        tvecs_by_id = {}
         yaw_by_id = {}
+        angles_by_id = {}
 
         for target_marker in corners_by_id.keys():
             if target_marker in self.masked_markers:
@@ -148,7 +190,7 @@ class BreadcrumbLocalizer():
                     imagePoints=corners_undist,
                     cameraMatrix=np.eye(3),
                     distCoeffs=np.zeros((1,5)),
-                    flags=cv2.SOLVEPNP_IPPE,
+                    #flags=cv2.SOLVEPNP_IPPE,
                 )
 
                 if tvec[2] > 0:
@@ -175,16 +217,16 @@ class BreadcrumbLocalizer():
                     #print('eul', euler_angles)
                     #print('trans', translation)
 
+                    tvecs_by_id[target_marker] = tvec.reshape(3)
                     relative_positions_by_id[target_marker] = [translation]#relative_positions_by_id[target_marker] + [-translation]
                     yaw_by_id[target_marker] = euler_angles[2]
+                    angles_by_id[target_marker] = euler_angles
                 else:
                     rospy.logwarn("Invalid marker reading")
 
-        #print(relative_positions_by_id)
-        return relative_positions_by_id, yaw_by_id
+        return relative_positions_by_id, yaw_by_id, tvecs_by_id, angles_by_id
 
     def image_callback(self, image_msg):
-        #print("image!")
         dictionary = aruco.getPredefinedDictionary(cv2.aruco.DICT_ARUCO_ORIGINAL)
         parameters =  aruco.DetectorParameters_create()
         #detector = aruco.ArucoDetector(dictionary)#, parameters)
@@ -202,21 +244,19 @@ class BreadcrumbLocalizer():
             mcorners = cv2.cornerSubPix(gray_img, marker_corners, winSize, zeroZone, criteria)
             corners_by_id[marker_id] = corners_by_id[marker_id] + [mcorners]
 
-        #drawn_markers = aruco.drawDetectedMarkers(img.copy(), corners, ids)
-
-        relative_position_by_id, yaw_by_id = self.get_relative_position_by_id(corners_by_id)
-
-        #print(relative_position_by_id)
-        #cv2.imshow('frame_markers', drawn_markers)
-        #cv2.waitKey(10)
+        relative_position_by_id, yaw_by_id, tvec_by_id, angles_by_id = self.get_relative_position_by_id(corners_by_id)
 
         if len(relative_position_by_id.keys()) == 0:
             return
 
+        #print(relative_position_by_id)
+
         #print("relative positions {}".format(relative_position_by_id))
         average_yaw = sum([i for i in yaw_by_id.values()]) / float(len(yaw_by_id.keys()))
+        average_roll = sum([i for i in [i[0] for i in angles_by_id.values()]]) / float(len(angles_by_id.keys()))
+        average_pitch = sum([i for i in [i[1] for i in angles_by_id.values()]]) / float(len(angles_by_id.keys()))
 
-        fused_position = self.get_fused_position(relative_position_by_id)
+        fused_position, fused_covariance = self.get_fused_position(relative_position_by_id, tvec_by_id)
 
         fused_position_msg = localization_informed_planning_sim.msg.BreadcrumbLocalizationResult()
         fused_position_msg.num_visible_markers = len(relative_position_by_id.keys())
@@ -229,8 +269,57 @@ class BreadcrumbLocalizer():
         )
         fused_position_msg.structure_yaw = self.global_yaw_imu - average_yaw
         fused_position_msg.relative_yaw = average_yaw
+        fused_position_msg.relative_roll = average_roll
+        fused_position_msg.relative_pitch = average_pitch
 
         self.fused_position_publisher.publish(fused_position_msg)
+
+        if self.visualization_mode:
+            img = cv2.cvtColor(gray_img, cv2.COLOR_GRAY2BGR)
+
+            max_eig = np.max(np.linalg.eigvals(fused_covariance))
+            cstar = math.pow(math.erf(0.02 / (math.sqrt(max_eig) * math.sqrt(2.0))), 3)
+            self.cstar_publisher.publish(cstar)
+            self.required_publisher.publish(0.92)
+
+            if 2 in tvec_by_id:
+                m2_pos = tvec_by_id[2]
+                max_eig = self.spline.eval(m2_pos)[0] * self.large_eigval_scaling_factor
+                cstar2 = math.pow(math.erf(0.02 / (math.sqrt(max_eig) * math.sqrt(2.0))), 3)
+                line2 = "    2: [{:.2f}, {:.2f}, {:.2f}] C* alone: {:.6f}".format(m2_pos[0], m2_pos[1], m2_pos[2], cstar2)
+            else:
+                m2_pos = [0,0,0]
+                line2 = "    2:".format(m2_pos[0], m2_pos[1], m2_pos[2])
+            if 3 in tvec_by_id:
+                m3_pos = tvec_by_id[3]
+                max_eig = self.spline.eval(m3_pos)[0] * self.large_eigval_scaling_factor
+                cstar3 = math.pow(math.erf(0.02 / (math.sqrt(max_eig) * math.sqrt(2.0))), 3)
+                line3 = "    3: [{:.2f}, {:.2f}, {:.2f}] C* alone: {:.6f}".format(m3_pos[0], m3_pos[1], m3_pos[2], cstar3)
+            else:
+                m3_pos = [0,0,0]
+                line3 = "    3:".format(m3_pos[0], m3_pos[1], m3_pos[2])
+
+            line1 = "Marker positions:"
+            line4 = "Fused C* {:.6f}".format(cstar)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            position = (50, 50)  # Coordinates (x, y) where the text will be placed
+            pos2 = (50, 100)
+            pos3 = (50, 150)
+            pos4 = (50, 200)
+            font_scale = 1.00
+            font_color = (0, 255, 0)  # BGR color tuple (green in this case)
+            font_thickness = 2
+
+            # Add the text to the image
+            cv2.putText(img, line1, position, font, font_scale, font_color, font_thickness)
+            cv2.putText(img, line2, pos2, font, font_scale, font_color, font_thickness)
+            cv2.putText(img, line3, pos3, font, font_scale, font_color, font_thickness)
+            cv2.putText(img, line4, pos4, font, font_scale, font_color, font_thickness)
+
+            drawn_markers = aruco.drawDetectedMarkers(img, corners, ids)
+            self.video_writer.write(drawn_markers)
+            cv2.imshow('frame_markers', drawn_markers)
+            cv2.waitKey(1)
 
     def get_orthogonal_vector(self, vector):
         x_axis = np.array([1, 0, 0])
@@ -252,8 +341,13 @@ class BreadcrumbLocalizer():
         raise Exception("Vector is colinear with all axes")
 
     def get_predicted_covariance_for_marker_relative_position(self, relative_position):
-        small_eigval = 1e-4
-        large_eigval = 1e-2
+        small_eigval = 1e-6
+        if self.spline is None:
+            large_eigval = 1e-2
+        else:
+            large_eigval = self.spline.eval(relative_position)[0] * self.large_eigval_scaling_factor
+            #print("lev", large_eigval)
+            #print("got eig from relpos", large_eigval)
 
         eigval_matrix = np.array([
             [large_eigval, 0.0, 0.0],
@@ -318,7 +412,7 @@ class BreadcrumbLocalizer():
             rospy.logwarn(covariances)
             raise Exception("Can only fuse two positions")
 
-    def get_fused_position(self, relative_positions_by_id):
+    def get_fused_position(self, relative_positions_by_id, tvecs_by_id):
         measured_positions = []
         covariances = []
 
@@ -326,17 +420,18 @@ class BreadcrumbLocalizer():
             position_formatted = measured_position[0].flatten()
             #marker_global_position = self.global_positions_by_id[marker_id][:3]
             #measured_position = marker_global_position + position_formatted
-            covariance = self.get_predicted_covariance_for_marker_relative_position(position_formatted)
+            covariance = self.get_predicted_covariance_for_marker_relative_position(tvecs_by_id[marker_id])
             measured_positions.append(position_formatted)
             covariances.append(covariance)
         
         #print("Measured positions", measured_positions)
         fused_position, fused_covariance = self.fuse_positions(measured_positions, covariances)
         #print("Result {}".format(fused_position))
-        return fused_position
+        return fused_position, fused_covariance
 
 
 if __name__ == '__main__':
     localizer = BreadcrumbLocalizer()
     localizer.initialize_ros_node()
     rospy.spin()
+    localizer.video_writer.release()

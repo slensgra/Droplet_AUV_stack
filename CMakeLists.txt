@@ -18,6 +18,7 @@ add_service_files(
   SetControllerTarget.srv
   SetGlobalPosition.srv
   PlungeAction.srv
+  UiTubeCommand.srv
 )
 
 add_message_files(
@@ -46,7 +47,9 @@ install(PROGRAMS
     src/breadcrumb_localization_node.py
     src/assembly_process_manager.py
     src/global_position_controller.py
+    src/forward_stag_to_breadcrumb.py
     src/gripper_handler_node.py
     src/grasp_drop_simulator.py
+    src/ui_tube_node.py
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
