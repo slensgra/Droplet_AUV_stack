@@ -21,7 +21,7 @@ for topic, message, time in bag_file.read_messages(['/rosout', '/controller_stat
     if topic == '/controller_state':
         parsed_debug = json.loads(message.debug_data)
 
-        if parsed_debug['angle_error_from_imu'][0] > 2.0:
+        if parsed_debug['angle_error_from_imu'][0] > 0.5:
             print("~")
             print(parsed_debug['angle_error_from_imu'])
             print((time - start_time).to_sec())
@@ -31,6 +31,12 @@ for topic, message, time in bag_file.read_messages(['/rosout', '/controller_stat
                 latest_imu.orientation.y,
                 latest_imu.orientation.z,
                 latest_imu.orientation.w
+            ]
+
+            accel = [
+                latest_imu.linear_acceleration.x,
+                latest_imu.linear_acceleration.y,
+                latest_imu.linear_acceleration.z,
             ]
 
             euler =  transformations.euler_from_quaternion(
@@ -44,3 +50,5 @@ for topic, message, time in bag_file.read_messages(['/rosout', '/controller_stat
             angle_error_pitch = utils.angle_error_rads(euler[1], 0.0)
 
             print('error', angle_error_roll, angle_error_pitch)
+
+            print('estimated roll, pitch', utils.get_roll_pitch_from_acceleration_vector(accel))

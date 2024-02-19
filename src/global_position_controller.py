@@ -159,23 +159,23 @@ class GlobalPositionController(object):
         #bfr 7 ccw
         # barbados
         self.pid_gains = dict(
-            x_p=1.50,
-            y_p=1.5,
-            yaw_p=-2.10,
-            x_d=0.7, 
-            y_d=0.70,
-            yaw_d=-1.0,
-            x_i=-0.20,
-            y_i=-0.20,
+            x_p=3.5,
+            y_p=3.5,
+            yaw_p=-3.10,
+            x_d=1.5, 
+            y_d=1.50,
+            yaw_d=-1.2,
+            x_i=-0.40,
+            y_i=-0.40,
             yaw_i=-0.1,#0.010,
-            roll_p=-0.05,#0.0,
-            roll_i=-0.10,
+            roll_p=-0.6,#0.0,
+            roll_i=-0.15,
             roll_d=0.0,#-0.50,
-            z_p=-2.70,
+            z_p=-3.50,
             z_i=-0.1,
-            z_d=0.00,
-            pitch_p=-0.05,#-0.1,#1.0,
-            pitch_i=-0.10,
+            z_d=1.50,
+            pitch_p=-0.60,#-0.1,#1.0,
+            pitch_i=-0.15,
             pitch_d=0.0,#-0.50,
         )
 
@@ -183,19 +183,19 @@ class GlobalPositionController(object):
         #self.pid_gains = dict(
         #    x_p=0.00,
         #    y_p=0.0,
-        #    yaw_p=-2.00,
+        #    yaw_p=-0.00,
         #    x_d=0.0, 
         #    y_d=0.00,
-        #    yaw_d=-1.0,
-        #    x_i=-0.50,
-        #    y_i=-0.50,
-        #    yaw_i=-0.020,#0.010,
+        #    yaw_d=-0.0,
+        #    x_i=-0.00,
+        #    y_i=-0.00,
+        #    yaw_i=-0.000,#0.010,
         #    roll_p=-0.00,#0.0,
         #    roll_i=-0.00,
         #    roll_d=0.0,#-0.50,
         #    z_p=-0.00,
         #    z_i=-0.0,
-        #    z_d=0.00,
+        #    z_d=1.50,
         #    pitch_p=-0.00,#-0.1,#1.0,
         #    pitch_i=-0.000,
         #    pitch_d=0.0,#-0.50,
@@ -359,7 +359,7 @@ class GlobalPositionController(object):
         #self.controller.z_p = 0.0
         self.controller.z_i = 0.0
         self.controller.z_d = 0.0
-        plunge_depth = 0.25
+        plunge_depth = 0.18
 
         previous_goal = copy.deepcopy(self.controller.goal_position)
         plunge_goal = copy.deepcopy(self.controller.goal_position)
@@ -455,12 +455,14 @@ class GlobalPositionController(object):
             return [translation[0], translation[1], translation[2], r, p, yaw]
 
         if self.selected_location_source == 'breadcrumb':
-            r, p, _ = transformations.euler_from_quaternion([
-                self.latest_imu.orientation.x,     
-                self.latest_imu.orientation.y,     
-                self.latest_imu.orientation.z,     
-                self.latest_imu.orientation.w
-            ])
+            #r, p, _ = transformations.euler_from_quaternion([
+            #    self.latest_imu.orientation.x,     
+            #    self.latest_imu.orientation.y,     
+            #    self.latest_imu.orientation.z,     
+            #    self.latest_imu.orientation.w
+            #])
+            r = self.latest_breadcrumb_position.relative_roll
+            p = self.latest_breadcrumb_position.relative_pitch
 
             x = self.latest_breadcrumb_position.position.x
             y = self.latest_breadcrumb_position.position.y

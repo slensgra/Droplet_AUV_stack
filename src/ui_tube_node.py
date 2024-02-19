@@ -21,11 +21,19 @@ class UITubeNode:
 
         success = False
         if command_parsed['type'] == 'led':
-            self.tube_controller.set_led(command_parsed['pattern'], command_parsed['r'], command_parsed['g'], command_parsed['b'])
-            success = True
+            try:
+                self.tube_controller.set_led(command_parsed['pattern'], command_parsed['r'], command_parsed['g'], command_parsed['b'])
+                success = True
+            except Exception as e:
+                success = True
+                rospy.logerr("failed to write! {}".format(e))
         elif command_parsed['type'] == 'headlamps':
-            self.tube_controller.set_headlamps(command_parsed['brightnesses'])
-            success = True
+            try:
+                self.tube_controller.set_headlamps(command_parsed['brightnesses'])
+                success = True
+            except Exception as e:
+                success = True
+                rospy.logerr("failed to write! {}".format(e))
         else:
             rospy.logerr('Invalid command type: {}'.format(command_parsed['type']))
 

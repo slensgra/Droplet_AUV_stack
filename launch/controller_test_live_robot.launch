@@ -36,5 +36,5 @@
       <param name="image_height" value="480" />
     </node>-->
 
-    <node pkg="rosbag" type="record" name="experiment_rosbag" args="-o /home/droplet/sam_barbados_2024/day_4_tank /camera_array/cam1/camera_info /camera_array/cam1/image_raw/compressed /rosout /mavros/rc/override /mini_ahrs_ros/imu /mavros/imu/static_pressure /fused_position /usb_cam/image_raw/compressed /controller_state"></node>
+    <node pkg="rosbag" type="record" name="experiment_rosbag" args="-o /home/droplet/sam_barbados_2024/day_5_tank /camera_array/cam1/camera_info /camera_array/cam1/image_raw/compressed /rosout /mavros/rc/override /mini_ahrs_ros/imu /mavros/imu/static_pressure /fused_position /usb_cam/image_raw/compressed /controller_state"></node>
 </launch>
