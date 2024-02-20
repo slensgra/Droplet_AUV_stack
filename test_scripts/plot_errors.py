@@ -7,10 +7,10 @@ from droplet_underwater_assembly_libs.utils import angle_error_rads
 #bag_file_path = "/home/sam/barbados2024/second_trial_in_ocean/day_3_ocean_2024-02-15-15-51-32.bag"
 
 # contains a bad run where the robot lost control
-bag_file_path = "/home/sam/barbados2024/fifth_trial_in_ocean/day_5_tank_2024-02-18-15-51-00.bag"
+#bag_file_path = "/home/sam/barbados2024/fifth_trial_in_ocean/day_5_tank_2024-02-18-15-51-00.bag"
 
 # contains a good run
-#bag_file_path = "/home/sam/barbados2024/fifth_trial_in_ocean/day_5_tank_2024-02-18-15-43-46.bag"
+bag_file_path = "/home/sam/barbados2024/fifth_trial_in_ocean/day_5_tank_2024-02-18-15-43-46.bag"
 
 bag_file = rosbag.Bag(bag_file_path)
 
@@ -21,12 +21,12 @@ velocities = []
 start_time = None
 
 # bad run timeframe
-logging_start_seconds = 1708289560
-logging_end_seconds = 1708289612
+#logging_start_seconds = 1708289560
+#logging_end_seconds = 1708289612
 
 # good run timeframe
-#logging_start_seconds = 1708289207
-#logging_end_seconds = 1708289248
+logging_start_seconds = 1708289207
+logging_end_seconds = 1708289248
 
 target_x = -0.54
 
