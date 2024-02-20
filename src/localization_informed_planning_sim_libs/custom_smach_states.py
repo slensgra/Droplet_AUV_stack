@@ -65,7 +65,7 @@ class FieldIdleState(smach.State):
     def __init__(self, target_position, outcomes=['succeeded']):
         smach.State.__init__(self, outcomes=outcomes)
         self.target_position = target_position
-        self.error_range = 0.22
+        self.error_range = 0.30
 
         self.breadcrumb_position_topic = '/fused_position'
         self.breadcrumb_subscriber = rospy.Subscriber(

@@ -159,21 +159,21 @@ class GlobalPositionController(object):
         #bfr 7 ccw
         # barbados
         self.pid_gains = dict(
-            x_p=3.5,
-            y_p=3.5,
-            yaw_p=-3.10,
-            x_d=1.5, 
-            y_d=1.50,
+            x_p=2.5,
+            y_p=2.5,
+            yaw_p=-2.50,
+            x_d=1.05, 
+            y_d=1.05,
             yaw_d=-1.2,
-            x_i=-0.40,
-            y_i=-0.40,
+            x_i=-0.15,
+            y_i=-0.15,
             yaw_i=-0.1,#0.010,
             roll_p=-0.6,#0.0,
             roll_i=-0.15,
             roll_d=0.0,#-0.50,
-            z_p=-3.50,
+            z_p=-2.50,
             z_i=-0.1,
-            z_d=1.50,
+            z_d=1.00,
             pitch_p=-0.60,#-0.1,#1.0,
             pitch_i=-0.15,
             pitch_d=0.0,#-0.50,
@@ -358,7 +358,7 @@ class GlobalPositionController(object):
         #self.controller.y_d = 0.0
         #self.controller.z_p = 0.0
         self.controller.z_i = 0.0
-        self.controller.z_d = 0.0
+        #self.controller.z_d = 0.0
         plunge_depth = 0.18
 
         previous_goal = copy.deepcopy(self.controller.goal_position)
