@@ -15,19 +15,19 @@ class PauseState(smach.State):
     def __init__(self, pause_seconds, outcomes=['succeeded', 'aborted']):
         smach.State.__init__(self, outcomes=outcomes)
         self.pause_seconds = pause_seconds
-        self.pattern_flipper = UITubePatternFlipper(
-            patterns=[
-                {'pattern': 'solid', 'type': 'led', 'r': 255, 'g': 255, 'b': 255},
-                {'pattern': 'solid', 'type': 'led', 'r': 0, 'g': 0, 'b': 0}
-            ],
-            flip_time=1.0
-        )
+        #self.pattern_flipper = UITubePatternFlipper(
+        #    patterns=[
+        #        {'pattern': 'solid', 'type': 'led', 'r': 255, 'g': 255, 'b': 255},
+        #        {'pattern': 'solid', 'type': 'led', 'r': 0, 'g': 0, 'b': 0}
+        #    ],
+        #    flip_time=1.0
+        #)
 
     def execute(self, userdata):
         start_time = rospy.Time.now()
 
         while (rospy.Time.now() - start_time).to_sec() < self.pause_seconds:
-            self.pattern_flipper.update()
+            #self.pattern_flipper.update()
             rospy.sleep(0.02)
 
         return 'succeeded'
@@ -65,7 +65,7 @@ class FieldIdleState(smach.State):
     def __init__(self, target_position, outcomes=['succeeded']):
         smach.State.__init__(self, outcomes=outcomes)
         self.target_position = target_position
-        self.error_range = 0.30
+        self.error_range = 1.5
 
         self.breadcrumb_position_topic = '/fused_position'
         self.breadcrumb_subscriber = rospy.Subscriber(
@@ -74,13 +74,13 @@ class FieldIdleState(smach.State):
             self.breadcrumb_callback,
         )
         self.last_breadcrumb_time = None
-        self.pattern_flipper = UITubePatternFlipper(
-            patterns=[
-                {'pattern': 'solid', 'type': 'led', 'r': 0, 'g': 255, 'b': 255},
-                {'pattern': 'solid', 'type': 'led', 'r': 0, 'g': 0, 'b': 255},
-            ],
-            flip_time=1.0
-        ) 
+        #self.pattern_flipper = UITubePatternFlipper(
+        #    patterns=[
+        #        {'pattern': 'solid', 'type': 'led', 'r': 0, 'g': 255, 'b': 255},
+        #        {'pattern': 'solid', 'type': 'led', 'r': 0, 'g': 0, 'b': 255},
+        #    ],
+        #    flip_time=1.0
+        #) 
 
         self.gripper_action_client = actionlib.SimpleActionClient('actuate_gripper', ActuateGripperAction)
 
@@ -108,7 +108,7 @@ class FieldIdleState(smach.State):
 
     def execute(self, data):
         droplet_underwater_assembly_libs.utils.set_motor_arming(False)
-        self.pattern_flipper.turn_headlamps_off()
+        #self.pattern_flipper.turn_headlamps_off()
 
         self.gripper_action_client.wait_for_server()
         goal = ActuateGripperGoal(position='open', plunge=False)
@@ -116,7 +116,7 @@ class FieldIdleState(smach.State):
         self.gripper_action_client.send_goal(goal)
 
         while self.breadcrumb_is_stale() or not self.error_is_in_range(self.last_breadcrumb):
-            self.pattern_flipper.update()
+            #self.pattern_flipper.update()
             rospy.sleep(0.02)
 
         droplet_underwater_assembly_libs.utils.set_motor_arming(True)

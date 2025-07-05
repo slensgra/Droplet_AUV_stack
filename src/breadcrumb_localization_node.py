@@ -11,6 +11,8 @@ import cv2
 from cv2 import aruco
 from tf import transformations
 import std_msgs.msg
+from exposure_control.msg import ExposureRegion
+
 #import splinter
 #splinter.load(splinter.load("/usr/local/lib/libsplinter-3-0.so"))
 
@@ -31,14 +33,32 @@ class BreadcrumbLocalizer():
         self.global_yaw_imu = 0.0
         self.masked_markers = set()
         self.visualization_mode = False
+        self.exposure_region_publisher = rospy.Publisher("/target_region", ExposureRegion, queue_size=1)
+        self.num_frames_with_no_marker = 0
+        self.marker_lost_published = False
+        self.tracked_marker_id = 3
+        self.missing_marker_frames = 10
+
         output_file = "/home/sam/two_hop_from_robot_view_with_stats.avi"
 
         frame_width = 1440
         frame_height = 1080
         fps = 14
 
-        fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
-        self.video_writer = cv2.VideoWriter(output_file, fourcc, fps, (frame_width, frame_height))
+        if self.visualization_mode:
+            fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
+            self.video_writer = cv2.VideoWriter(output_file, fourcc, fps, (frame_width, frame_height))
+
+    def publish_region(self, minx, maxx, miny, maxy):
+        exposure_message = ExposureRegion()
+        exposure_message.min_x = int(minx)
+        exposure_message.min_y = int(miny)
+        exposure_message.max_x = int(maxx)
+        exposure_message.max_y = int(maxy)
+        exposure_message.image_width = 1440
+        exposure_message.image_height = 1080
+
+        self.exposure_region_publisher.publish(exposure_message)
 
     def set_marker_position(self, message):
         self.global_positions_by_id[message.marker_id] = np.array([
@@ -93,9 +113,6 @@ class BreadcrumbLocalizer():
             self.image_callback,
             queue_size=1
         )
-
-        if self.visualization_mode:
-            pass
 
         cam_info_topic = rospy.get_param('~camera_info_topic', '/rexrov/rexrov/camera/camera_info')
         self.camera_info_subscriber = rospy.Subscriber(
@@ -243,6 +260,22 @@ class BreadcrumbLocalizer():
             criteria = (cv2.TERM_CRITERIA_EPS + cv2.TermCriteria_COUNT, 100, 0.0001)
             mcorners = cv2.cornerSubPix(gray_img, marker_corners, winSize, zeroZone, criteria)
             corners_by_id[marker_id] = corners_by_id[marker_id] + [mcorners]
+            
+        if self.tracked_marker_id in corners_by_id.keys():
+            corners = corners_by_id[self.tracked_marker_id][0][0]
+            xs = [x[0] for x in corners]
+            ys = [x[1] for x in corners]
+            self.publish_region(min(xs), max(xs), min(ys), max(ys))
+            self.marker_lost_published = False
+            self.num_frames_with_no_marker = 0
+        else:
+            self.num_frames_with_no_marker = self.num_frames_with_no_marker + 1
+            if (self.num_frames_with_no_marker >= self.missing_marker_frames) and not self.marker_lost_published:
+                rospy.logwarn("Tracked marker lost. Setting default exposure")
+                self.publish_region(0, 0, 0, 0)
+
+                if self.num_frames_with_no_marker >= self.missing_marker_frames + 2:
+                    self.marker_lost_published = True
 
         relative_position_by_id, yaw_by_id, tvec_by_id, angles_by_id = self.get_relative_position_by_id(corners_by_id)
 
@@ -434,4 +467,6 @@ if __name__ == '__main__':
     localizer = BreadcrumbLocalizer()
     localizer.initialize_ros_node()
     rospy.spin()
-    localizer.video_writer.release()
+
+    if localizer.visualization_mode:
+        localizer.video_writer.release()

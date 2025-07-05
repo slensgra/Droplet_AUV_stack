@@ -1,3 +1,4 @@
 float32 plunge_duration
+bool grasping_block
 ---
 bool success

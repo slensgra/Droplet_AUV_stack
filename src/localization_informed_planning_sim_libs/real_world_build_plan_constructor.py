@@ -1,7 +1,7 @@
 import math
 import rospy
 import numpy as np
-
+import copy
 import smach
 import smach_ros
 import actionlib
@@ -158,22 +158,119 @@ class RealWorldBuildPlanConstructor(object):
             )
 
         return state_machine
+    
+
+    def add_move(self, position, pause_after_time, move_name, pause_name, next_action_name):
+        move_goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
+            target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
+                position,
+                frame_id='world',
+                seq=0,
+                stamp=rospy.Time.now()
+            ),
+            position_source='breadcrumb',
+            clear_error_integrals=False
+        )
+
+        
+        smach.StateMachine.add(
+            move_name,
+            smach_ros.SimpleActionState(
+                'move_to_position_server',
+                localization_informed_planning_sim.msg.MoveToPositionAction, 
+                goal=move_goal,
+            ),
+            transitions={'succeeded': pause_name, 'aborted': 'idle'}
+        )
+
+        smach.StateMachine.add(
+            pause_name,
+            PauseState(pause_after_time),
+            transitions={'succeeded': next_action_name}
+        )
+
+
+    def add_gripper_actuate(self, position, plunge, action_name, next_action_name):
+        goal = localization_informed_planning_sim.msg.ActuateGripperGoal(position=position, plunge=plunge)
+        smach.StateMachine.add(
+            action_name,
+            smach_ros.SimpleActionState(
+                'actuate_gripper',
+                localization_informed_planning_sim.msg.ActuateGripperAction,
+                goal=goal
+            ),
+            transitions={'succeeded': next_action_name, 'aborted': 'idle'},
+        )
 
 
     def get_puzzleflex_simple_experiment_state_machine(self):
+        #q: back to m3 center: 9.5 inches (0.2413)
+        #m: m3 to m2 center: 14in (0.3556)
+        #l: b to s1 9cm: 0.09
+        #j: s1 to s2 30.7 cm: 0.307
+        #s: 1.219
+
+        # pic1: cam_to_manip_x
         state_machine = smach.StateMachine(['succeeded', 'aborted', 'preempted'])
         cam_to_manip_y = -0.48
-        cam_to_manip_x = 0.05
-        #pickup_position = [0.67 + cam_to_manip_x, 0.35 + cam_to_manip_y, 0.75, 0.0, 0.0, -math.pi/2.0]
+        cam_to_manip_x = 0.00
         #drop1 = [0.96 + cam_to_manip_x, -0.03 + cam_to_manip_y, 0.75, 0.0, 0.0, -math.pi/2.0]
 
-        pickup_position = [0.27 + cam_to_manip_x, 0.35 + cam_to_manip_y, 0.75, 0.0, 0.0, -math.pi/2.0]
-        drop1 = [0.56 + cam_to_manip_x, 0.15 + cam_to_manip_y, 0.92, 0.0, 0.0, -math.pi/2.0]
+        pickup_position = [-0.4656, -0.07, 0.8, 0.0, 0.0, 0.0]
+        pickup_down_pos = copy.deepcopy(pickup_position)
+        pickup_down_pos[2] = pickup_down_pos[2] - 0.1
+        pickup1_lift = copy.deepcopy(pickup_position)
+        pickup1_lift[2] = pickup1_lift[2] + 0.38
 
-        #pickup_position = [0.0, 0.4, 0.8, 0.0, 0.0, 0.0]
+        top_predrop     = [-0.3556, 0.23, 1.07, 0.0, 0.0, 0.0]
+        top_predrop_down = copy.deepcopy(top_predrop)
+        top_predrop_down[2] = top_predrop_down[2] - 0.15
+
+        pickupa_position = [-0.0656, -0.07, 0.8, 0.0, 0.0, 0.0]
+        pickupa_down_pos = copy.deepcopy(pickupa_position)
+        pickupa_down_pos[2] = pickupa_down_pos[2] - 0.1
+        pickupa1_lift = copy.deepcopy(pickupa_position)
+        pickupa1_lift[2] = pickupa1_lift[2] + 0.38
+
+        topa_predrop     = [-0.1556, 0.23, 1.07, 0.0, 0.0, 0.0]
+        topa_predrop_down = copy.deepcopy(topa_predrop)
+        topa_predrop_down[2] = topa_predrop_down[2] - 0.15
+
         # +x is right facing tag
         # +y is up facing tag
         with state_machine:
+            smach.StateMachine.add(
+                'idle',
+                FieldIdleState(target_position=pickup_position),
+                transitions={'succeeded': 'm1'}
+            )
+
+            self.add_move(position=pickup_position, pause_after_time=10.0, move_name="m1", pause_name="p1", next_action_name='m2')
+            self.add_move(position=pickup_down_pos, pause_after_time=10.0, move_name="m2", pause_name="p2", next_action_name='grab1')
+            self.add_gripper_actuate(position='close', plunge=True, action_name="grab1", next_action_name="m3")
+            self.add_move(position=pickup1_lift, pause_after_time=10.0, move_name="m3", pause_name="p3", next_action_name='m4')
+            self.add_move(position=pickup1_lift, pause_after_time=15.0, move_name="m4", pause_name="p4", next_action_name='m5')
+            self.add_move(position=top_predrop, pause_after_time=10.0, move_name="m5", pause_name="p5", next_action_name='m6')
+            self.add_move(position=top_predrop, pause_after_time=15.0, move_name="m6", pause_name="p6", next_action_name='m7')
+            self.add_move(position=top_predrop_down, pause_after_time=25.0, move_name="m7", pause_name="p7", next_action_name='m7a')
+            self.add_move(position=top_predrop_down, pause_after_time=0.0, move_name="m7a", pause_name="p7a", next_action_name='open1')
+            self.add_gripper_actuate(position='open', plunge=True, action_name="open1", next_action_name="m8")
+            self.add_move(position=top_predrop, pause_after_time=25.0, move_name="m8", pause_name="p8", next_action_name='idle')
+
+            #self.add_move(position=pickupa_position, pause_after_time=10.0, move_name="m1", pause_name="p1", next_action_name='m2')
+            #self.add_move(position=pickupa_down_pos, pause_after_time=10.0, move_name="m2", pause_name="p2", next_action_name='grab1')
+            #self.add_gripper_actuate(position='close', plunge=True, action_name="grab1", next_action_name="m3")
+            #self.add_move(position=pickupa1_lift, pause_after_time=10.0, move_name="m3", pause_name="p3", next_action_name='m4')
+            #self.add_move(position=pickupa1_lift, pause_after_time=15.0, move_name="m4", pause_name="p4", next_action_name='m5')
+            #self.add_move(position=topa_predrop, pause_after_time=10.0, move_name="m5", pause_name="p5", next_action_name='m6')
+            #self.add_move(position=topa_predrop, pause_after_time=15.0, move_name="m6", pause_name="p6", next_action_name='m7')
+            #self.add_move(position=topa_predrop_down, pause_after_time=25.0, move_name="m7", pause_name="p7", next_action_name='m7a')
+            #self.add_move(position=topa_predrop_down, pause_after_time=0.0, move_name="m7a", pause_name="p7a", next_action_name='open1')
+            #self.add_gripper_actuate(position='open', plunge=True, action_name="open1", next_action_name="m8")
+            #self.add_move(position=topa_predrop, pause_after_time=25.0, move_name="m8", pause_name="p8", next_action_name='idle')
+
+
+            """
             move_goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
                 target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
                     pickup_position,
@@ -184,11 +281,6 @@ class RealWorldBuildPlanConstructor(object):
                 position_source='breadcrumb'
             )
 
-            smach.StateMachine.add(
-                'idle',
-                FieldIdleState(),
-                transitions={'succeeded': 'MOVE_1'}
-            )
 
             smach.StateMachine.add(
                 'MOVE_1',
@@ -197,170 +289,9 @@ class RealWorldBuildPlanConstructor(object):
                     localization_informed_planning_sim.msg.MoveToPositionAction, 
                     goal=move_goal,
                 ),
-                transitions={'succeeded': 'pause1a'}
+                #transitions={'succeeded': 'pause1a'}
             )
-
-            smach.StateMachine.add(
-                'pause1a',
-                PauseState(20.0),
-                transitions={'succeeded': 'MOVE_1a'}
-            )
-
-            move_goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
-                target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
-                    pickup_position - np.array([0.0, 0.0, 0.05, 0.0, 0.0, 0.0]),
-                    frame_id='world',
-                    seq=0,
-                    stamp=rospy.Time.now()
-                ),
-                position_source='breadcrumb'
-            )
-
-            smach.StateMachine.add(
-                'MOVE_1a',
-                smach_ros.SimpleActionState(
-                    'move_to_position_server',
-                    localization_informed_planning_sim.msg.MoveToPositionAction, 
-                    goal=move_goal,
-                ),
-                transitions={'succeeded': 'pause1b'}
-            )
-
-            smach.StateMachine.add(
-                'pause1b',
-                PauseState(10.0),
-                transitions={'succeeded': 'grab1'}
-            )
-
-            close_gripper_goal = localization_informed_planning_sim.msg.ActuateGripperGoal(position='close')
-            smach.StateMachine.add(
-                'grab1',
-                smach_ros.SimpleActionState(
-                    'actuate_gripper',
-                    localization_informed_planning_sim.msg.ActuateGripperAction,
-                    goal=close_gripper_goal,
-                ),
-                transitions={'succeeded': 'pause1'},
-            )
-            smach.StateMachine.add(
-                'pause1',
-                PauseState(5.0),
-                transitions={'succeeded': 'move2a'}
-            )
-
-            move_goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
-                target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
-                    pickup_position + np.array([0.0,0.0,0.09,0.0,0.0,0.0]),
-                    frame_id='world',
-                    seq=0,
-                    stamp=rospy.Time.now()
-                ),
-                position_source='breadcrumb'
-            )
-
-            smach.StateMachine.add(
-                'move2a',
-                smach_ros.SimpleActionState(
-                    'move_to_position_server',
-                    localization_informed_planning_sim.msg.MoveToPositionAction, 
-                    goal=move_goal,
-                ),
-                transitions={'succeeded': 'pause2a'}
-            )
-
-            smach.StateMachine.add(
-                'pause2a',
-                PauseState(20.0),
-                transitions={'succeeded': 'move2c'}
-            )
-
-            move_goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
-                target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
-                    [pickup_position[0], pickup_position[1], drop1[2], pickup_position[3], pickup_position[4], pickup_position[5]],
-                    frame_id='world',
-                    seq=0,
-                    stamp=rospy.Time.now()
-                ),
-                position_source='breadcrumb'
-            )
-
-            smach.StateMachine.add(
-                'move2c',
-                smach_ros.SimpleActionState(
-                    'move_to_position_server',
-                    localization_informed_planning_sim.msg.MoveToPositionAction, 
-                    goal=move_goal,
-                ),
-                transitions={'succeeded': 'pause2c'}
-            )
-
-            smach.StateMachine.add(
-                'pause2c',
-                PauseState(45.0),
-                transitions={'succeeded': 'move2'}
-            )
-
-            move_goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
-                target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
-                    drop1,
-                    frame_id='world',
-                    seq=0,
-                    stamp=rospy.Time.now()
-                ),
-                position_source='breadcrumb'
-            )
-
-            smach.StateMachine.add(
-                'move2',
-                smach_ros.SimpleActionState(
-                    'move_to_position_server',
-                    localization_informed_planning_sim.msg.MoveToPositionAction, 
-                    goal=move_goal,
-                ),
-                transitions={'succeeded': 'pause2aa'}
-            )
-
-            smach.StateMachine.add(
-                'pause2aa',
-                PauseState(5.0),
-                transitions={'succeeded': 'move3'}
-            )
-
-            move_goal = localization_informed_planning_sim.msg.MoveToPositionGoal(
-                target_position=droplet_underwater_assembly_libs.utils.pose_stamped_from_xyzrpy(
-                    drop1,
-                    frame_id='world',
-                    seq=0,
-                    stamp=rospy.Time.now()
-                ),
-                position_source='breadcrumb'
-            )
-
-            smach.StateMachine.add(
-                'move3',
-                smach_ros.SimpleActionState(
-                    'move_to_position_server',
-                    localization_informed_planning_sim.msg.MoveToPositionAction, 
-                    goal=move_goal,
-                ),
-                transitions={'succeeded': 'pause2'}
-            )
-
-            smach.StateMachine.add(
-                'pause2',
-                PauseState(30.0),
-                transitions={'succeeded': 'drop1'}
-            )
-
-            open_gripper_goal = localization_informed_planning_sim.msg.ActuateGripperGoal(position='open')
-            smach.StateMachine.add(
-                'drop1',
-                smach_ros.SimpleActionState(
-                    'actuate_gripper',
-                    localization_informed_planning_sim.msg.ActuateGripperAction,
-                    goal=open_gripper_goal
-                ),
-            )
+            """
 
         return state_machine
 

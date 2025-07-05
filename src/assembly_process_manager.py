@@ -43,8 +43,8 @@ if __name__ == '__main__':
     #state_machine = real_world_build_plan_constructor.get_manipulator_test_state_machine()
     #state_machine = real_world_build_plan_constructor.get_controller_test_state_machine()
     #state_machine = real_world_build_plan_constructor.one_hop_plan()
-    #state_machine = real_world_build_plan_constructor.get_puzzleflex_simple_experiment_state_machine()
-    state_machine = real_world_build_plan_constructor.get_field_experiment_state_machine()
+    state_machine = real_world_build_plan_constructor.get_puzzleflex_simple_experiment_state_machine()
+    #state_machine = real_world_build_plan_constructor.get_field_experiment_state_machine()
 
     introspection_server = smach_ros.IntrospectionServer('assembly_state_machine', state_machine, '/SM_ROOT')
     introspection_server.start()

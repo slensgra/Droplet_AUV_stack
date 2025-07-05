@@ -46,23 +46,23 @@ class GlobalPositionController(object):
         ]
         self.latest_smoothed_velocity = []
 
-        self.error_state_flipper = UITubePatternFlipper(
-            patterns=[
-                {'pattern': 'chase', 'type': 'led', 'r': 255, 'g': 0, 'b': 0},
-                {'pattern': 'solid', 'type': 'led', 'r': 255, 'g': 0, 'b': 0},
-            ],
-            flip_time=1.0
-        ) 
+        #self.error_state_flipper = UITubePatternFlipper(
+        #    patterns=[
+        #        {'pattern': 'chase', 'type': 'led', 'r': 255, 'g': 0, 'b': 0},
+        #        {'pattern': 'solid', 'type': 'led', 'r': 255, 'g': 0, 'b': 0},
+        #    ],
+        #    flip_time=1.0
+        #) 
 
         self.max_breadcrumb_age = 2.0
 
-        self.okay_state_flipper = UITubePatternFlipper(
-            patterns=[
-                {'pattern': 'chase', 'type': 'led', 'r': 0, 'g': 255, 'b': 0},
-                {'pattern': 'solid', 'type': 'led', 'r': 0, 'g': 255, 'b': 0},
-            ],
-            flip_time=1.0
-        )
+        #self.okay_state_flipper = UITubePatternFlipper(
+        #    patterns=[
+        #        {'pattern': 'chase', 'type': 'led', 'r': 0, 'g': 255, 'b': 0},
+        #        {'pattern': 'solid', 'type': 'led', 'r': 0, 'g': 255, 'b': 0},
+        #    ],
+        #    flip_time=1.0
+        #)
 
         if self.simulation_mode:
             self.imu_topic = '/rexrov/imu'
@@ -126,26 +126,26 @@ class GlobalPositionController(object):
             queue_size=1
         )
 
-        #self.pid_gains = dict(
-        #    x_p=2.50,
-        #    y_p=2.5,
-        #    yaw_p=2.0, 
-        #    x_d=-0.0, 
-        #    y_d=-0.00,
-        #    yaw_d=1.0,
-        #    x_i=config.DEFAULT_X_I_GAIN,
-        #    y_i=config.DEFAULT_Y_I_GAIN,
-        #    yaw_i=0.10,
-        #    roll_p=1.0,
-        #    roll_i=0.00,
-        #    roll_d=-0.50,
-        #    z_p=1.00,
-        #    z_i=0.1,#config.DEFAULT_Z_I_GAIN,
-        #    z_d=0.00,
-        #    pitch_p=-1.0,
-        #    pitch_i=-0.1,
-        #    pitch_d=0.50,
-        #)
+        self.pid_gains = dict(
+            x_p=2.50,
+            y_p=2.5,
+            yaw_p=2.0, 
+            x_d=-0.0, 
+            y_d=-0.00,
+            yaw_d=1.0,
+            x_i=config.DEFAULT_X_I_GAIN / 100.0,
+            y_i=config.DEFAULT_Y_I_GAIN / 100.0,
+            yaw_i=0.10,
+            roll_p=1.0,
+            roll_i=0.03,
+            roll_d=-0.50,
+            z_p=1.00,
+            z_i=0.05,#config.DEFAULT_Z_I_GAIN,
+            z_d=0.00,
+            pitch_p=-1.0,
+            pitch_i=-0.03,
+            pitch_d=0.50,
+        )
 
         # top 
         #tfr 1 down
@@ -158,32 +158,32 @@ class GlobalPositionController(object):
         #bfl 5 cw
         #bfr 7 ccw
         # barbados
-        self.pid_gains = dict(
-            x_p=2.5,
-            y_p=2.5,
-            yaw_p=-2.50,
-            x_d=0.75, 
-            y_d=0.75,
-            yaw_d=-1.2,
-            x_i=-0.10,
-            y_i=-0.10,
-            yaw_i=-0.1,#0.010,
-            roll_p=-0.6,#0.0,
-            roll_i=-0.15,
-            roll_d=0.0,#-0.50,
-            z_p=-2.50,
-            z_i=-0.1,
-            z_d=0.5,
-            pitch_p=-0.60,#-0.1,#1.0,
-            pitch_i=-0.15,
-            pitch_d=0.0,#-0.50,
-        )
+        #self.pid_gains = dict(
+        #    x_p=2.3,
+        #    y_p=2.3,
+        #    yaw_p=-2.50,
+        #    x_d=0.45, 
+        #    y_d=0.45,
+        #    yaw_d=-1.2,
+        #    x_i=-0.05,
+        #    y_i=-0.05,
+        #    yaw_i=-0.05,#0.010,
+        #    roll_p=-0.5,#0.0,
+        #    roll_i=-0.01,
+        #    roll_d=-0.1,#-0.50,
+        #    z_p=-2.50,
+        #    z_i=-0.15,
+        #    z_d=0.5,
+        #    pitch_p=-0.50,#-0.1,#1.0,
+        #    pitch_i=-0.01,
+        #    pitch_d=-0.1,#-0.50,
+        #)
 
         # testing
         #self.pid_gains = dict(
-        #    x_p=0.00,
-        #    y_p=0.0,
-        #    yaw_p=-0.00,
+        #    x_p=1.00,
+        #    y_p=1.0,
+        #    yaw_p=-1.00,
         #    x_d=0.0, 
         #    y_d=0.00,
         #    yaw_d=-0.0,
@@ -193,9 +193,9 @@ class GlobalPositionController(object):
         #    roll_p=-0.00,#0.0,
         #    roll_i=-0.00,
         #    roll_d=0.0,#-0.50,
-        #    z_p=-0.00,
+        #    z_p=-2.00,
         #    z_i=-0.0,
-        #    z_d=1.50,
+        #    z_d=0.00,
         #    pitch_p=-0.00,#-0.1,#1.0,
         #    pitch_i=-0.000,
         #    pitch_d=0.0,#-0.50,
@@ -204,9 +204,9 @@ class GlobalPositionController(object):
         self.controller = trajectory_tracker.PIDTracker(
             **self.pid_gains
         )
-        #temporary = list([-1.0 * i for i in self.controller.y_factor])
-        #self.controller.y_factor = self.controller.x_factor
-        #self.controller.x_factor = temporary
+        temporary = list([-1.0 * i for i in self.controller.y_factor])
+        self.controller.y_factor = self.controller.x_factor
+        self.controller.x_factor = temporary
 
 
     def initialize_simulation_mode(self):
@@ -359,7 +359,7 @@ class GlobalPositionController(object):
         #self.controller.z_p = 0.0
         self.controller.z_i = 0.0
         #self.controller.z_d = 0.0
-        plunge_depth = 0.18
+        plunge_depth = 0.125
 
         previous_goal = copy.deepcopy(self.controller.goal_position)
         plunge_goal = copy.deepcopy(self.controller.goal_position)
@@ -380,7 +380,13 @@ class GlobalPositionController(object):
 
         rospy.loginfo("Completed plunge")
         #self.controller.clear_error_integrals(prev_buoyancy_input=None, axes=[2])
-        self.controller.clear_error_integrals()
+
+        if message.grasping_block:
+            buoyancy_input = 8.0
+        else:
+            buoyancy_input = None
+
+        self.controller.clear_error_integrals(prev_buoyancy_input=buoyancy_input)
 
         return True
 
@@ -404,6 +410,7 @@ class GlobalPositionController(object):
             i = i + 1
             rospy.sleep(0.1)
 
+        i = 0
         while not rospy.is_shutdown() and not self.error_is_in_range(self.controller.get_error()):
             if self.action_server.is_preempt_requested():
                 self.action_server.set_preempted()
@@ -414,20 +421,27 @@ class GlobalPositionController(object):
                 #utils.set_motor_arming(False)
                 self.action_server.set_aborted()
                 return
+            
+            i = i + 1
+            if i % 200 == 0:
+                rospy.loginfo('move error {}'.format(self.controller.get_error()))
 
-            if self.outside_of_operational_range:
-                self.error_state_flipper.update()
-            else:
-                self.okay_state_flipper.update()
+            rospy.sleep(0.02)
+
+            #if self.outside_of_operational_range:
+            #    self.error_state_flipper.update()
+            #else:
+            #    self.okay_state_flipper.update()
 
         rospy.loginfo("Reached goal position")
+        rospy.loginfo("i {}".format(self.controller.error_integral))
         self.action_server.set_succeeded()
 
     def error_is_in_range(self, error):
         error_range = 0.05
-        if abs(error[0]) < error_range and abs(error[1]) < error_range and abs(error[2]) < error_range*3.0 and abs(error[5]) < 0.25:
+        if abs(error[0]) < error_range and abs(error[1]) < error_range and abs(error[2]) < error_range*3.0 and abs(error[5]) < 0.05:
             return True
-        
+
         return False
 
     def imu_callback(self, msg):

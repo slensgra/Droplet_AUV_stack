@@ -24,13 +24,13 @@ class GripperHandlerNode():
             False
         )
 
-        self.pattern_flipper = UITubePatternFlipper(
-            patterns=[
-                {'pattern': 'solid', 'type': 'led', 'r': 255, 'g': 0, 'b': 255},
-                {'pattern': 'chase', 'type': 'led', 'r': 255, 'g': 0, 'b': 255},
-            ],
-            flip_time=1.0
-        ) 
+        #self.pattern_flipper = UITubePatternFlipper(
+        #    patterns=[
+        #        {'pattern': 'solid', 'type': 'led', 'r': 255, 'g': 0, 'b': 255},
+        #        {'pattern': 'chase', 'type': 'led', 'r': 255, 'g': 0, 'b': 255},
+        #    ],
+        #    flip_time=1.0
+        #) 
 
         self.plunge_service_proxy = rospy.ServiceProxy('plunge_action', localization_informed_planning_sim.srv.PlungeAction)
 
@@ -55,7 +55,7 @@ class GripperHandlerNode():
         if goal.plunge:
             plunge_thread = threading.Thread(
                 target=self.plunge_service_proxy,
-                args=(config.GRIPPER_OPEN_TIME,)
+                args=(config.GRIPPER_OPEN_TIME, False,)
             )
             plunge_thread.start()
 
@@ -63,7 +63,7 @@ class GripperHandlerNode():
 
         self.gripper_handler.start_opening_fingers()
         while self.gripper_handler.is_opening:
-            self.pattern_flipper.update()
+            #self.pattern_flipper.update()
             rospy.sleep(0.05)
 
         self.is_open = True
@@ -76,7 +76,7 @@ class GripperHandlerNode():
         plunge_thread = None
 
         if goal.plunge:
-            plunge_thread = threading.Thread(target=self.plunge_service_proxy, args=(config.GRIPPER_OPEN_TIME,))
+            plunge_thread = threading.Thread(target=self.plunge_service_proxy, args=(config.GRIPPER_CLOSE_TIME, True,))
             plunge_thread.start()
 
         if not self.is_open:
@@ -86,7 +86,7 @@ class GripperHandlerNode():
 
         self.gripper_handler.start_closing_fingers()
         while self.gripper_handler.is_closing:
-            self.pattern_flipper.update()
+            #self.pattern_flipper.update()
             rospy.sleep(0.05)
 
         self.is_open = False
