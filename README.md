@@ -1,8 +1,8 @@
 # Code stack for the Droplet underwater assembly robot.
 
-![image](https://github.com/user-attachments/assets/8e9f689d-7dad-43e9-bc76-d2f780d2dae7)
+<img src="https://github.com/user-attachments/assets/8e9f689d-7dad-43e9-bc76-d2f780d2dae7" width=400/>
 
-<img src="https://github.com/user-attachments/assets/585908d2-875d-49ce-a7c8-c8145cfb581e" width=200/>
+<img src="https://github.com/user-attachments/assets/585908d2-875d-49ce-a7c8-c8145cfb581e" width=400/>
 
 
 This codebase was developed to support the Droplet autonomous underwater assembly robot. 
