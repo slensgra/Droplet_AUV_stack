@@ -1,7 +1,0 @@
-TODAY
--------
-
-tie the path plans into the software
-implement attempted grasps
-
-how should attempted grasps look?
